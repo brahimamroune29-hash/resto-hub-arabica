@@ -467,13 +467,15 @@ function Page() {
         // ignore
       }
       try {
-        const ds = await getDailySummaryStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ds = await getDailySummaryStatusFn({ headers });
         setDailySummaryEnabledState(!!ds.enabled);
       } catch {
         // ignore
       }
       try {
-        const sb = await getSummaryBotStatusFn();
+        const headers = await getServerAuthHeaders();
+        const sb = await getSummaryBotStatusFn({ headers });
         setSummaryBotConfigured(!!sb.botConfigured);
         setSummaryBotUsername(sb.botUsername ?? null);
         setSummaryLinked(!!sb.linked);
@@ -2032,7 +2034,8 @@ function Page() {
                 onClick={async () => {
                   setDailySummaryBusy(true);
                   try {
-                    await clearSummaryBotTokenFn();
+                    const headers = await getServerAuthHeaders();
+                    await clearSummaryBotTokenFn({ headers });
                     setSummaryBotConfigured(false);
                     setSummaryBotUsername(null);
                     setSummaryLinked(false);
@@ -2072,11 +2075,13 @@ function Page() {
                   onClick={async () => {
                     setDailySummaryBusy(true);
                     try {
+                      const headers = await getServerAuthHeaders();
                       const res = await setSummaryBotTokenFn({
                         data: {
                           bot_token: summaryBotTokenInput.trim(),
                           app_origin: window.location.origin,
                         },
+                        headers,
                       });
                       setSummaryBotConfigured(true);
                       setSummaryBotUsername(res.botUsername);
@@ -2116,7 +2121,8 @@ function Page() {
                   onClick={async () => {
                     setDailySummaryBusy(true);
                     try {
-                      await unlinkSummaryFn();
+                      const headers = await getServerAuthHeaders();
+                      await unlinkSummaryFn({ headers });
                       setSummaryLinked(false);
                       setSummaryUsername(null);
                       setSummaryDeepLink(null);
@@ -2154,14 +2160,17 @@ function Page() {
                 onClick={async () => {
                   setDailySummaryBusy(true);
                   try {
+                    const headers = await getServerAuthHeaders();
                     const res = await genSummaryLinkFn({
                       data: { app_origin: window.location.origin },
+                      headers,
                     });
                     setSummaryDeepLink(res.deepLink);
                     if (summaryPollRef.current) clearInterval(summaryPollRef.current);
                     summaryPollRef.current = setInterval(async () => {
                       try {
-                        const st = await getSummaryBotStatusFn();
+                        const pollHeaders = await getServerAuthHeaders();
+                        const st = await getSummaryBotStatusFn({ headers: pollHeaders });
                         if (st.linked) {
                           setSummaryLinked(true);
                           setSummaryUsername(st.username ?? null);
@@ -2203,8 +2212,9 @@ function Page() {
             onClick={async () => {
               setDailySummaryBusy(true);
               try {
+                const headers = await getServerAuthHeaders();
                 const next = !dailySummaryEnabled;
-                await setDailySummaryEnabledFn({ data: { enabled: next } });
+                await setDailySummaryEnabledFn({ data: { enabled: next }, headers });
                 setDailySummaryEnabledState(next);
                 toast.success(next ? "تم تفعيل الملخص اليومي" : "تم تعطيل الملخص اليومي");
               } catch (e) {
@@ -2226,7 +2236,8 @@ function Page() {
           onClick={async () => {
             setDailySummaryBusy(true);
             try {
-              await sendDailySummaryNowFn();
+              const headers = await getServerAuthHeaders();
+              await sendDailySummaryNowFn({ headers });
               toast.success("تم إرسال ملخص تجريبي إلى تليجرام");
             } catch (e) {
               toast.error((e as Error).message || "فشل الإرسال");
