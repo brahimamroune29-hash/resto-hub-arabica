@@ -94,7 +94,12 @@ function OpsInventory() {
 
   const maybeAlert = async (ingredientId: string) => {
     try {
-      const r = await alertFn({ data: { ingredientId } });
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) return;
+      const r = await alertFn({
+        data: { ingredientId },
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      });
       if (r.sent) toast.warning(tx("تم إرسال تنبيه Telegram للمخزون الناقص"));
     } catch {
       // silent
@@ -450,14 +455,18 @@ function OpsInventory() {
       }
       toast.success(tx("تمت إضافة ") + (processed) + tx(" مكون للمخزون"));
       try {
-        await notifyPurchase({
-          data: {
-            restaurantId,
-            itemCount: processed,
-            totalCost: total,
-            source: "receipt",
-          },
-        });
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.access_token) {
+          await notifyPurchase({
+            data: {
+              restaurantId,
+              itemCount: processed,
+              totalCost: total,
+              source: "receipt",
+            },
+            headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+          });
+        }
       } catch {
         // silent
       }
