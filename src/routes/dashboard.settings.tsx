@@ -743,7 +743,8 @@ function Page() {
   async function onClearBotToken() {
     setBotBusy(true);
     try {
-      await clearBotFn();
+      const headers = await getServerAuthHeaders();
+      await clearBotFn({ headers });
       setUsingCustomBot(false);
       setCustomBotUsername(null);
       setTgLinked(false);
