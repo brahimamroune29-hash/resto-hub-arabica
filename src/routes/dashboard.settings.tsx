@@ -283,6 +283,7 @@ function Page() {
           base64,
         };
       }
+      const headers = await getServerAuthHeaders();
       const res = await updateSplashFn({
         data: {
           splash_enabled: splashEnabled,
@@ -299,6 +300,7 @@ function Page() {
           whatsapp_number: whatsappNumber.trim() || null,
           brand_color: brandColor || null,
         },
+        headers,
       });
       if (res?.cover_image_url !== undefined) setCoverImageUrl(res.cover_image_url);
       if (res?.cover_video_url !== undefined) setCoverVideoUrl(res.cover_video_url);
