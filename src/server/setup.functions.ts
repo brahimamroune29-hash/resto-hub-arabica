@@ -60,7 +60,7 @@ export const createRestaurantSetup = createServerFn({ method: "POST" })
     console.log("[setup/server] auth.uid", userId);
     console.log("[setup/server] insert payload", payload);
 
-    const { data: restaurant, error } = await supabase
+    const { data: restaurant, error } = await supabaseAdmin
       .from("restaurants")
       .insert(payload)
       .select()
