@@ -457,7 +457,8 @@ function Page() {
         // ignore
       }
       try {
-        const ts = await getTgStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ts = await getTgStatusFn({ headers });
         setTgLinked(!!ts.linked);
         setTgUsername(ts.username ?? null);
         setTgBotUsername(ts.botUsername ?? "");
