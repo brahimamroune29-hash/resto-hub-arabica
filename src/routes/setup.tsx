@@ -114,6 +114,9 @@ function SetupPage() {
         data: payload,
         headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
       });
+      if (restaurant instanceof Response) {
+        throw new Error((await restaurant.text()) || t("setup.saveFailed"));
+      }
       console.log("[setup] insert success", restaurant);
 
       console.log("[setup] success, navigating");
