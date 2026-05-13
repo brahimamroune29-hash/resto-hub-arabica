@@ -94,7 +94,12 @@ function OpsInventory() {
 
   const maybeAlert = async (ingredientId: string) => {
     try {
-      const r = await alertFn({ data: { ingredientId } });
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) return;
+      const r = await alertFn({
+        data: { ingredientId },
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      });
       if (r.sent) toast.warning(tx("تم إرسال تنبيه Telegram للمخزون الناقص"));
     } catch {
       // silent
