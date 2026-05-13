@@ -237,7 +237,7 @@ function OpsInventory() {
       }
       setRecItems(r.items);
       const itemsTotal = r.items.reduce(
-        (sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
+        (sum: number, it: any) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0),
         0,
       );
       setRecMeta({
