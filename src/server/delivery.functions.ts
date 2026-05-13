@@ -309,7 +309,9 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
       total,
     };
   });
