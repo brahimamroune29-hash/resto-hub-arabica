@@ -2121,7 +2121,8 @@ function Page() {
                   onClick={async () => {
                     setDailySummaryBusy(true);
                     try {
-                      await unlinkSummaryFn();
+                      const headers = await getServerAuthHeaders();
+                      await unlinkSummaryFn({ headers });
                       setSummaryLinked(false);
                       setSummaryUsername(null);
                       setSummaryDeepLink(null);
@@ -2159,14 +2160,17 @@ function Page() {
                 onClick={async () => {
                   setDailySummaryBusy(true);
                   try {
+                    const headers = await getServerAuthHeaders();
                     const res = await genSummaryLinkFn({
                       data: { app_origin: window.location.origin },
+                      headers,
                     });
                     setSummaryDeepLink(res.deepLink);
                     if (summaryPollRef.current) clearInterval(summaryPollRef.current);
                     summaryPollRef.current = setInterval(async () => {
                       try {
-                        const st = await getSummaryBotStatusFn();
+                        const pollHeaders = await getServerAuthHeaders();
+                        const st = await getSummaryBotStatusFn({ headers: pollHeaders });
                         if (st.linked) {
                           setSummaryLinked(true);
                           setSummaryUsername(st.username ?? null);
