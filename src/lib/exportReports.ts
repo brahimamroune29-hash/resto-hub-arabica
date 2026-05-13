@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -24,10 +24,25 @@ function todayStamp() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function exportAnalyticsExcel(data: AnalyticsExport) {
-  const wb = XLSX.utils.book_new();
+function downloadBlob(buffer: ArrayBuffer, filename: string) {
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
-  const kpiSheet = XLSX.utils.aoa_to_sheet([
+export async function exportAnalyticsExcel(data: AnalyticsExport) {
+  const wb = new ExcelJS.Workbook();
+
+  const kpiSheet = wb.addWorksheet("KPIs");
+  kpiSheet.addRows([
     ["Restaurant", data.restaurantName],
     ["Generated", new Date().toLocaleString()],
     [],
@@ -37,24 +52,21 @@ export function exportAnalyticsExcel(data: AnalyticsExport) {
     ["Avg Order (Week, DZD)", Math.round(data.kpis.avgOrderWeek)],
     ["Sales This Month (DZD)", data.kpis.salesMonth],
   ]);
-  XLSX.utils.book_append_sheet(wb, kpiSheet, "KPIs");
 
-  const dailySheet = XLSX.utils.json_to_sheet(
-    data.daily.map((d) => ({ Date: d.date, "Total (DZD)": d.total })),
-  );
-  XLSX.utils.book_append_sheet(wb, dailySheet, "Daily Sales");
+  const dailySheet = wb.addWorksheet("Daily Sales");
+  dailySheet.addRow(["Date", "Total (DZD)"]);
+  for (const d of data.daily) dailySheet.addRow([d.date, d.total]);
 
-  const topSheet = XLSX.utils.json_to_sheet(
-    data.topItems.map((r) => ({ Item: r.name, Qty: r.qty, "Revenue (DZD)": r.revenue })),
-  );
-  XLSX.utils.book_append_sheet(wb, topSheet, "Top Items");
+  const topSheet = wb.addWorksheet("Top Items");
+  topSheet.addRow(["Item", "Qty", "Revenue (DZD)"]);
+  for (const r of data.topItems) topSheet.addRow([r.name, r.qty, r.revenue]);
 
-  const bottomSheet = XLSX.utils.json_to_sheet(
-    data.bottomItems.map((r) => ({ Item: r.name, Qty: r.qty, "Revenue (DZD)": r.revenue })),
-  );
-  XLSX.utils.book_append_sheet(wb, bottomSheet, "Bottom Items");
+  const bottomSheet = wb.addWorksheet("Bottom Items");
+  bottomSheet.addRow(["Item", "Qty", "Revenue (DZD)"]);
+  for (const r of data.bottomItems) bottomSheet.addRow([r.name, r.qty, r.revenue]);
 
-  XLSX.writeFile(wb, `analytics_${todayStamp()}.xlsx`);
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBlob(buffer as ArrayBuffer, `analytics_${todayStamp()}.xlsx`);
 }
 
 export function exportAnalyticsPDF(data: AnalyticsExport) {
