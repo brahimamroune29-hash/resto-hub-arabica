@@ -457,7 +457,8 @@ function Page() {
         // ignore
       }
       try {
-        const ts = await getTgStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ts = await getTgStatusFn({ headers });
         setTgLinked(!!ts.linked);
         setTgUsername(ts.username ?? null);
         setTgBotUsername(ts.botUsername ?? "");
@@ -664,14 +665,16 @@ function Page() {
   async function onGenerateTgLink() {
     setTgBusy(true);
     try {
-      const res = await genTgLinkFn();
+      const headers = await getServerAuthHeaders();
+      const res = await genTgLinkFn({ headers });
       setTgDeepLink(res.deepLink);
       setTgBotUsername(res.botUsername);
       // Start polling status to detect link completion
       const start = Date.now();
       const poll = setInterval(async () => {
         try {
-          const ts = await getTgStatusFn();
+          const pollHeaders = await getServerAuthHeaders();
+          const ts = await getTgStatusFn({ headers: pollHeaders });
           if (ts.linked) {
             setTgLinked(true);
             setTgUsername(ts.username ?? null);
@@ -695,7 +698,8 @@ function Page() {
   async function onUnlinkTg() {
     setTgBusy(true);
     try {
-      await unlinkTgFn();
+      const headers = await getServerAuthHeaders();
+      await unlinkTgFn({ headers });
       setTgLinked(false);
       setTgUsername(null);
       setTgDeepLink(null);
@@ -716,8 +720,10 @@ function Page() {
     }
     setBotBusy(true);
     try {
+      const headers = await getServerAuthHeaders();
       const res = await setBotFn({
         data: { bot_token: tok, app_origin: window.location.origin },
+        headers,
       });
       setUsingCustomBot(true);
       setCustomBotUsername(res.botUsername);
@@ -737,7 +743,8 @@ function Page() {
   async function onClearBotToken() {
     setBotBusy(true);
     try {
-      await clearBotFn();
+      const headers = await getServerAuthHeaders();
+      await clearBotFn({ headers });
       setUsingCustomBot(false);
       setCustomBotUsername(null);
       setTgLinked(false);
