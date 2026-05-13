@@ -333,7 +333,7 @@ export const getDeliveryOrderStatus = createServerFn({ method: "GET" })
 
     const { data: order, error: oErr } = await supabaseAdmin
       .from("orders")
-      .select("id, status, total, created_at, restaurant_id, order_type")
+      .select("id, status, total, created_at, restaurant_id, order_type, daily_number")
       .eq("id", data.order_id)
       .maybeSingle();
     if (oErr) throw new Error(GENERIC_ERR);
@@ -341,7 +341,9 @@ export const getDeliveryOrderStatus = createServerFn({ method: "GET" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
       status: order.status as string,
       total: Number(order.total),
       created_at: order.created_at as string,
