@@ -1,0 +1,1 @@
+ALTER TABLE public.restaurants ADD COLUMN IF NOT EXISTS menu_theme text NOT NULL DEFAULT 'classic_red';
