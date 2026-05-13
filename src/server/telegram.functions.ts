@@ -97,6 +97,24 @@ function deriveBotSecret(token: string) {
   return createHash("sha256").update(`telegram-webhook:${token}`).digest("base64url");
 }
 
+function getPublicWebhookOrigin(appOrigin: string) {
+  const origin = appOrigin.replace(/\/$/, "");
+
+  const authBridgeMatch = origin.match(
+    /^https:\/\/(?:id-preview--)?([0-9a-f-]{36})\.(lovableproject\.com|lovable\.app)$/i,
+  );
+  if (authBridgeMatch) {
+    return `https://project--${authBridgeMatch[1]}-dev.lovable.app`;
+  }
+
+  const previewMatch = origin.match(/^https:\/\/id-preview--([0-9a-f-]+)\.([^/]+)$/i);
+  if (previewMatch) {
+    return `https://project--${previewMatch[1]}-dev.${previewMatch[2]}`;
+  }
+
+  return origin;
+}
+
 const SetBotSchema = z.object({
   bot_token: z
     .string()
@@ -129,14 +147,9 @@ export const setRestaurantBotToken = createServerFn({ method: "POST" })
       throw new Error("التوكن غير صالح أو البوت غير متاح");
     }
 
-    // Telegram can't reach the auth-bridged `id-preview--...` host. Rewrite to
-    // the stable `project--<id>-dev.<host>` public preview URL so the webhook
-    // delivery is not redirected through Lovable auth.
-    let origin = data.app_origin.replace(/\/$/, "");
-    origin = origin.replace(
-      /^https:\/\/id-preview--([0-9a-f-]+)\.([^/]+)$/i,
-      "https://project--$1-dev.$2",
-    );
+    // Telegram can't reach auth-bridged preview hosts. Rewrite preview origins
+    // to the stable public project URL so webhook delivery is not redirected.
+    const origin = getPublicWebhookOrigin(data.app_origin);
     const webhookUrl = `${origin}/api/public/telegram/webhook/${r.id}`;
     const secret = deriveBotSecret(token);
 
