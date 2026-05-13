@@ -219,9 +219,17 @@ function OpsInventory() {
         r.onerror = () => reject(r.error);
         r.readAsDataURL(file);
       });
-      const r = await analyzeFn({
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) {
+        throw new Error(tx("يجب تسجيل الدخول"));
+      }
+      const r: any = await analyzeFn({
         data: { imageBase64: b64, mimeType: file.type || "image/jpeg" },
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
       });
+      if (r instanceof Response) {
+        throw new Error(tx("فشل تحليل الصورة"));
+      }
       if (!r.items.length) {
         toast.warning(tx("لم نستطع قراءة أي عنصر — جرّب صورة أوضح"));
       } else {
