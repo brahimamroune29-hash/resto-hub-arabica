@@ -2034,7 +2034,8 @@ function Page() {
                 onClick={async () => {
                   setDailySummaryBusy(true);
                   try {
-                    await clearSummaryBotTokenFn();
+                    const headers = await getServerAuthHeaders();
+                    await clearSummaryBotTokenFn({ headers });
                     setSummaryBotConfigured(false);
                     setSummaryBotUsername(null);
                     setSummaryLinked(false);
@@ -2074,11 +2075,13 @@ function Page() {
                   onClick={async () => {
                     setDailySummaryBusy(true);
                     try {
+                      const headers = await getServerAuthHeaders();
                       const res = await setSummaryBotTokenFn({
                         data: {
                           bot_token: summaryBotTokenInput.trim(),
                           app_origin: window.location.origin,
                         },
+                        headers,
                       });
                       setSummaryBotConfigured(true);
                       setSummaryBotUsername(res.botUsername);
