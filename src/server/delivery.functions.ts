@@ -215,7 +215,7 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
         customer_address: data.customer_address.trim(),
         daily_number: (dailyNum as number | null) ?? null,
       })
-      .select("id")
+      .select("id, daily_number")
       .single();
     if (oErr || !order) {
       if (oErr) console.error("[submitDeliveryOrder] insert order", oErr);
