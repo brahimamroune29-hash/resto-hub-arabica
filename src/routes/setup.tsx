@@ -82,7 +82,9 @@ function SetupPage() {
         userId: sessionData.session?.user?.id,
         sessErr,
       });
-      if (sessErr || !sessionData.session?.user) throw new Error("anonymous");
+      if (sessErr || !sessionData.session?.user || !sessionData.session.access_token) {
+        throw new Error("anonymous");
+      }
       const userId = sessionData.session.user.id;
 
       let logoPayload: { name: string; type: string; base64: string } | null = null;
@@ -108,7 +110,13 @@ function SetupPage() {
         logo: payload.logo ? { name: payload.logo.name, type: payload.logo.type } : null,
       });
       console.log("[setup] inserting restaurant via authenticated server function");
-      const restaurant = await setupRestaurant({ data: payload });
+      const restaurant = await setupRestaurant({
+        data: payload,
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      });
+      if (restaurant instanceof Response) {
+        throw new Error((await restaurant.text()) || t("setup.saveFailed"));
+      }
       console.log("[setup] insert success", restaurant);
 
       console.log("[setup] success, navigating");
