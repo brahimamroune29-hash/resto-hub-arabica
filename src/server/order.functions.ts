@@ -113,6 +113,7 @@ export type OrderStatusInfo = {
   google_maps_review_url: string | null;
   restaurant_id: string;
   has_review: boolean;
+  daily_number: number | null;
 };
 
 export const getOrderStatus = createServerFn({ method: "GET" })
@@ -131,7 +132,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
 
     const { data: order } = await supabaseAdmin
       .from("orders")
-      .select("id, status, review_due_at, restaurant_id")
+      .select("id, status, review_due_at, restaurant_id, daily_number")
       .eq("id", data.order_id)
       .eq("restaurant_id", table.restaurant_id)
       .maybeSingle();
@@ -157,6 +158,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
       google_maps_review_url: rest?.google_maps_review_url ?? null,
       restaurant_id: order.restaurant_id,
       has_review: !!rev,
+      daily_number: (order as { daily_number: number | null }).daily_number ?? null,
     };
   });
 
