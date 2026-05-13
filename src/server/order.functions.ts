@@ -82,7 +82,7 @@ export const submitOrder = createServerFn({ method: "POST" })
         notes: data.notes?.trim() ? data.notes.trim() : null,
         daily_number: (dailyNum as number | null) ?? null,
       })
-      .select("id")
+      .select("id, daily_number")
       .single();
     if (oErr || !order) {
       if (oErr) console.error("[submitOrder] insert order error", oErr);
@@ -100,7 +100,9 @@ export const submitOrder = createServerFn({ method: "POST" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
     };
   });
 
@@ -111,6 +113,7 @@ export type OrderStatusInfo = {
   google_maps_review_url: string | null;
   restaurant_id: string;
   has_review: boolean;
+  daily_number: number | null;
 };
 
 export const getOrderStatus = createServerFn({ method: "GET" })
@@ -129,7 +132,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
 
     const { data: order } = await supabaseAdmin
       .from("orders")
-      .select("id, status, review_due_at, restaurant_id")
+      .select("id, status, review_due_at, restaurant_id, daily_number")
       .eq("id", data.order_id)
       .eq("restaurant_id", table.restaurant_id)
       .maybeSingle();
@@ -155,6 +158,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
       google_maps_review_url: rest?.google_maps_review_url ?? null,
       restaurant_id: order.restaurant_id,
       has_review: !!rev,
+      daily_number: (order as { daily_number: number | null }).daily_number ?? null,
     };
   });
 

@@ -215,7 +215,7 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
         customer_address: data.customer_address.trim(),
         daily_number: (dailyNum as number | null) ?? null,
       })
-      .select("id")
+      .select("id, daily_number")
       .single();
     if (oErr || !order) {
       if (oErr) console.error("[submitDeliveryOrder] insert order", oErr);
@@ -236,7 +236,9 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
     // after the HTTP response is sent, so messages would never go out.
     await (async () => {
       try {
-        const orderNum = order.id.replace(/-/g, "").slice(-6).toUpperCase();
+        const orderNum = order.daily_number != null
+          ? String(order.daily_number).padStart(3, "0")
+          : order.id.replace(/-/g, "").slice(-6).toUpperCase();
         const itemsList = orderItemsPayload
           .map((p) => `• ${p.name_snapshot} × ${p.quantity}`)
           .join("\n");
@@ -307,7 +309,9 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
       total,
     };
   });
@@ -329,7 +333,7 @@ export const getDeliveryOrderStatus = createServerFn({ method: "GET" })
 
     const { data: order, error: oErr } = await supabaseAdmin
       .from("orders")
-      .select("id, status, total, created_at, restaurant_id, order_type")
+      .select("id, status, total, created_at, restaurant_id, order_type, daily_number")
       .eq("id", data.order_id)
       .maybeSingle();
     if (oErr) throw new Error(GENERIC_ERR);
@@ -337,7 +341,9 @@ export const getDeliveryOrderStatus = createServerFn({ method: "GET" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
       status: order.status as string,
       total: Number(order.total),
       created_at: order.created_at as string,
