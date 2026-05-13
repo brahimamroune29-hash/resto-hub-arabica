@@ -698,7 +698,8 @@ function Page() {
   async function onUnlinkTg() {
     setTgBusy(true);
     try {
-      await unlinkTgFn();
+      const headers = await getServerAuthHeaders();
+      await unlinkTgFn({ headers });
       setTgLinked(false);
       setTgUsername(null);
       setTgDeepLink(null);
