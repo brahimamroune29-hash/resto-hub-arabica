@@ -2212,8 +2212,9 @@ function Page() {
             onClick={async () => {
               setDailySummaryBusy(true);
               try {
+                const headers = await getServerAuthHeaders();
                 const next = !dailySummaryEnabled;
-                await setDailySummaryEnabledFn({ data: { enabled: next } });
+                await setDailySummaryEnabledFn({ data: { enabled: next }, headers });
                 setDailySummaryEnabledState(next);
                 toast.success(next ? "تم تفعيل الملخص اليومي" : "تم تعطيل الملخص اليومي");
               } catch (e) {
@@ -2235,7 +2236,8 @@ function Page() {
           onClick={async () => {
             setDailySummaryBusy(true);
             try {
-              await sendDailySummaryNowFn();
+              const headers = await getServerAuthHeaders();
+              await sendDailySummaryNowFn({ headers });
               toast.success("تم إرسال ملخص تجريبي إلى تليجرام");
             } catch (e) {
               toast.error((e as Error).message || "فشل الإرسال");
