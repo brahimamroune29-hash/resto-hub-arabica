@@ -413,6 +413,7 @@ function Page() {
       <OrderTrackingScreen
         orderId={activeOrderId}
         qrToken={qr_token}
+        initialOrderNumber={activeOrderNumber}
         onComplete={clearActiveOrder}
       />
     );
