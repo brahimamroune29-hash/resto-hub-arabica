@@ -123,6 +123,7 @@ function Page() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [activeOrderNumber, setActiveOrderNumber] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [orderNotes, setOrderNotes] = useState("");
 
@@ -413,6 +414,7 @@ function Page() {
       <OrderTrackingScreen
         orderId={activeOrderId}
         qrToken={qr_token}
+        initialOrderNumber={activeOrderNumber}
         onComplete={clearActiveOrder}
       />
     );
@@ -1210,10 +1212,12 @@ function statusIndex(s: OrderStatusInfo["status"]): number {
 function OrderTrackingScreen({
   orderId,
   qrToken,
+  initialOrderNumber,
   onComplete,
 }: {
   orderId: string;
   qrToken: string;
+  initialOrderNumber?: string | null;
   onComplete: () => void;
 }) {
   const [info, setInfo] = useState<OrderStatusInfo | null>(null);
