@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestHeader } from "@tanstack/react-start/server";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 import { sendTelegramMessage } from "./telegram.server";
 
 type NotificationResult = { sent: boolean; reason?: string };
@@ -10,6 +13,33 @@ function toNotificationReason(error: unknown) {
   if (error instanceof Response) return `request_failed_${error.status}`;
   if (typeof error === "string") return error;
   return "send_failed";
+}
+
+async function getAuthedClientForNotification(): Promise<{
+  supabase: ReturnType<typeof createClient<Database>>;
+  userId: string;
+} | null> {
+  const authHeader = getRequestHeader("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) return null;
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !publishableKey) {
+    console.error("[ops-alerts] missing Lovable Cloud auth environment");
+    return null;
+  }
+
+  const supabase = createClient<Database>(supabaseUrl, publishableKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await supabase.auth.getClaims(token);
+  if (error || !data?.claims?.sub) return null;
+
+  return { supabase, userId: data.claims.sub };
 }
 
 const Input = z.object({ ingredientId: z.string().uuid() });
