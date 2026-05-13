@@ -715,8 +715,18 @@ function ImportFromPhotoButton({
     if (!file) return;
     setParsing(true);
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error("الجلسة منتهية، سجّل دخولك من جديد");
+      }
       const b64 = await fileToBase64(file);
-      const res = await parseFn({ data: { imageBase64: b64 } });
+      const res = await parseFn({
+        data: { imageBase64: b64 },
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+      });
+      if (res instanceof Response) {
+        throw new Error((await res.text()) || "فشل تحليل الصورة");
+      }
       setDrafts(
         res.categories.map((c) => ({
           name: c.name,
