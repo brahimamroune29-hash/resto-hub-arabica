@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { requireAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ async function fileToBase64(file: File) {
 function SetupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const setupRestaurant = useServerFn(createRestaurantSetup);
   const [name, setName] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -106,7 +108,7 @@ function SetupPage() {
         logo: payload.logo ? { name: payload.logo.name, type: payload.logo.type } : null,
       });
       console.log("[setup] inserting restaurant via authenticated server function");
-      const restaurant = await createRestaurantSetup({ data: payload });
+      const restaurant = await setupRestaurant({ data: payload });
       console.log("[setup] insert success", restaurant);
 
       console.log("[setup] success, navigating");
