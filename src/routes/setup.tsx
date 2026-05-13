@@ -108,7 +108,7 @@ function SetupPage() {
         logo: payload.logo ? { name: payload.logo.name, type: payload.logo.type } : null,
       });
       console.log("[setup] inserting restaurant via authenticated server function");
-      const restaurant = await createRestaurantSetup({ data: payload });
+      const restaurant = await setupRestaurant({ data: payload });
       console.log("[setup] insert success", restaurant);
 
       console.log("[setup] success, navigating");
