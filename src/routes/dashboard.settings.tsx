@@ -665,14 +665,16 @@ function Page() {
   async function onGenerateTgLink() {
     setTgBusy(true);
     try {
-      const res = await genTgLinkFn();
+      const headers = await getServerAuthHeaders();
+      const res = await genTgLinkFn({ headers });
       setTgDeepLink(res.deepLink);
       setTgBotUsername(res.botUsername);
       // Start polling status to detect link completion
       const start = Date.now();
       const poll = setInterval(async () => {
         try {
-          const ts = await getTgStatusFn();
+          const pollHeaders = await getServerAuthHeaders();
+          const ts = await getTgStatusFn({ headers: pollHeaders });
           if (ts.linked) {
             setTgLinked(true);
             setTgUsername(ts.username ?? null);
