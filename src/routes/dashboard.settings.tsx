@@ -467,13 +467,15 @@ function Page() {
         // ignore
       }
       try {
-        const ds = await getDailySummaryStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ds = await getDailySummaryStatusFn({ headers });
         setDailySummaryEnabledState(!!ds.enabled);
       } catch {
         // ignore
       }
       try {
-        const sb = await getSummaryBotStatusFn();
+        const headers = await getServerAuthHeaders();
+        const sb = await getSummaryBotStatusFn({ headers });
         setSummaryBotConfigured(!!sb.botConfigured);
         setSummaryBotUsername(sb.botUsername ?? null);
         setSummaryLinked(!!sb.linked);
