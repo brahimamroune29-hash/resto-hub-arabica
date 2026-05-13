@@ -82,7 +82,7 @@ export const submitOrder = createServerFn({ method: "POST" })
         notes: data.notes?.trim() ? data.notes.trim() : null,
         daily_number: (dailyNum as number | null) ?? null,
       })
-      .select("id")
+      .select("id, daily_number")
       .single();
     if (oErr || !order) {
       if (oErr) console.error("[submitOrder] insert order error", oErr);
@@ -100,7 +100,9 @@ export const submitOrder = createServerFn({ method: "POST" })
 
     return {
       order_id: order.id,
-      order_number: order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      order_number: order.daily_number != null
+        ? String(order.daily_number).padStart(3, "0")
+        : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
     };
   });
 
