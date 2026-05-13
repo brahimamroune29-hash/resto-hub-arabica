@@ -129,7 +129,14 @@ export const setRestaurantBotToken = createServerFn({ method: "POST" })
       throw new Error("التوكن غير صالح أو البوت غير متاح");
     }
 
-    const origin = data.app_origin.replace(/\/$/, "");
+    // Telegram can't reach the auth-bridged `id-preview--...` host. Rewrite to
+    // the stable `project--<id>-dev.<host>` public preview URL so the webhook
+    // delivery is not redirected through Lovable auth.
+    let origin = data.app_origin.replace(/\/$/, "");
+    origin = origin.replace(
+      /^https:\/\/id-preview--([0-9a-f-]+)\.([^/]+)$/i,
+      "https://project--$1-dev.$2",
+    );
     const webhookUrl = `${origin}/api/public/telegram/webhook/${r.id}`;
     const secret = deriveBotSecret(token);
 
