@@ -404,7 +404,8 @@ function Page() {
       void loadTeam(data.id);
       // Load splash settings
       try {
-        const sp = await getSplashFn();
+        const headers = await getServerAuthHeaders();
+        const sp = await getSplashFn({ headers });
         setSplashEnabled(sp.splash_enabled ?? true);
         setSplashAlwaysShow(sp.splash_always_show ?? false);
         setCoverType((sp.cover_type as "image" | "video") || "image");
