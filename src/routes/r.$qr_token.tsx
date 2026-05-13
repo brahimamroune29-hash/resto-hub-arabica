@@ -1212,10 +1212,12 @@ function statusIndex(s: OrderStatusInfo["status"]): number {
 function OrderTrackingScreen({
   orderId,
   qrToken,
+  initialOrderNumber,
   onComplete,
 }: {
   orderId: string;
   qrToken: string;
+  initialOrderNumber?: string | null;
   onComplete: () => void;
 }) {
   const [info, setInfo] = useState<OrderStatusInfo | null>(null);
