@@ -223,6 +223,13 @@ function Page() {
   const [brandColor, setBrandColor] = useState("#7c5cff");
   const coverFileRef = useRef<HTMLInputElement>(null);
 
+  async function getServerAuthHeaders() {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error("الجلسة منتهية، سجّل دخولك من جديد");
+    return { Authorization: `Bearer ${token}` };
+  }
+
   function onPickCover(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
