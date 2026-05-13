@@ -37,6 +37,7 @@ async function fileToBase64(file: File) {
 function SetupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const setupRestaurant = useServerFn(createRestaurantSetup);
   const [name, setName] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
