@@ -1258,7 +1258,9 @@ function OrderTrackingScreen({
     if (info?.has_review) setReviewDone(true);
   }, [info]);
 
-  const orderNumber = orderId.replace(/-/g, "").slice(-6).toUpperCase();
+  const orderNumber = info?.daily_number != null
+    ? String(info.daily_number).padStart(3, "0")
+    : orderId.replace(/-/g, "").slice(-6).toUpperCase();
   const currentIdx = info ? statusIndex(info.status) : 0;
 
   return (
