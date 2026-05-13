@@ -376,8 +376,13 @@ function Page() {
         .order("created_at", { ascending: true })
         .limit(1);
       const data = rows?.[0];
-      if (error || !data) {
+      if (error) {
         toast.error("فشل تحميل بيانات المطعم");
+        setLoading(false);
+        return;
+      }
+      if (!data) {
+        // No restaurant yet — show the setup CTA instead of an error
         setLoading(false);
         return;
       }
