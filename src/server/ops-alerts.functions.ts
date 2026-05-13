@@ -3,6 +3,15 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { sendTelegramMessage } from "./telegram.server";
 
+type NotificationResult = { sent: boolean; reason?: string };
+
+function toNotificationReason(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error instanceof Response) return `request_failed_${error.status}`;
+  if (typeof error === "string") return error;
+  return "send_failed";
+}
+
 const Input = z.object({ ingredientId: z.string().uuid() });
 
 export const sendLowStockAlert = createServerFn({ method: "POST" })
@@ -51,27 +60,35 @@ const PurchaseInput = z.object({
 export const sendPurchaseNotification = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => PurchaseInput.parse(data))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    const { data: r } = await supabase
-      .from("restaurants")
-      .select("name, telegram_chat_id, telegram_bot_token")
-      .eq("id", data.restaurantId)
-      .maybeSingle();
-    if (!r?.telegram_chat_id) return { sent: false };
-    const label = data.source === "receipt" ? "📸 فاتورة شراء (تصوير)" : "🛒 إدخال يدوي";
-    const text =
-      `${label}\n` +
-      `🏪 ${r.name}\n` +
-      `عدد المكونات: <b>${data.itemCount}</b>\n` +
-      `الإجمالي: <b>${data.totalCost.toFixed(2)} دج</b>\n` +
-      `تم تحديث المخزون تلقائياً.`;
+  .handler(async ({ data, context }): Promise<NotificationResult> => {
     try {
+      const { supabase } = context;
+      const { data: r, error } = await supabase
+        .from("restaurants")
+        .select("name, telegram_chat_id, telegram_bot_token")
+        .eq("id", data.restaurantId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[sendPurchaseNotification] restaurant lookup failed", error);
+        return { sent: false, reason: error.message };
+      }
+      if (!r?.telegram_chat_id) return { sent: false, reason: "no_telegram" };
+
+      const label = data.source === "receipt" ? "📸 فاتورة شراء (تصوير)" : "🛒 إدخال يدوي";
+      const text =
+        `${label}\n` +
+        `🏪 ${r.name}\n` +
+        `عدد المكونات: <b>${data.itemCount}</b>\n` +
+        `الإجمالي: <b>${data.totalCost.toFixed(2)} دج</b>\n` +
+        `تم تحديث المخزون تلقائياً.`;
+
       await sendTelegramMessage(r.telegram_chat_id, text, {
         botToken: r.telegram_bot_token,
       });
       return { sent: true };
-    } catch {
-      return { sent: false };
+    } catch (error) {
+      console.error("[sendPurchaseNotification] failed", error);
+      return { sent: false, reason: toNotificationReason(error) };
     }
   });
