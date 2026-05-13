@@ -123,6 +123,7 @@ function Page() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [activeOrderNumber, setActiveOrderNumber] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [orderNotes, setOrderNotes] = useState("");
 
