@@ -720,8 +720,10 @@ function Page() {
     }
     setBotBusy(true);
     try {
+      const headers = await getServerAuthHeaders();
       const res = await setBotFn({
         data: { bot_token: tok, app_origin: window.location.origin },
+        headers,
       });
       setUsingCustomBot(true);
       setCustomBotUsername(res.botUsername);
