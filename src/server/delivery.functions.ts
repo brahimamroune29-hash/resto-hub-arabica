@@ -236,7 +236,9 @@ export const submitDeliveryOrder = createServerFn({ method: "POST" })
     // after the HTTP response is sent, so messages would never go out.
     await (async () => {
       try {
-        const orderNum = order.id.replace(/-/g, "").slice(-6).toUpperCase();
+        const orderNum = order.daily_number != null
+          ? String(order.daily_number).padStart(3, "0")
+          : order.id.replace(/-/g, "").slice(-6).toUpperCase();
         const itemsList = orderItemsPayload
           .map((p) => `• ${p.name_snapshot} × ${p.quantity}`)
           .join("\n");
