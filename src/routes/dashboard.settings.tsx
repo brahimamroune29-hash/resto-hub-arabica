@@ -313,7 +313,8 @@ function Page() {
 
   async function refreshDrivers() {
     try {
-      const res = await listDriversFn();
+      const headers = await getServerAuthHeaders();
+      const res = await listDriversFn({ headers });
       setDrivers(res.drivers as DriverRow[]);
     } catch {
       // ignore
@@ -328,7 +329,8 @@ function Page() {
     }
     setDriverBusy(true);
     try {
-      const res = await addDriverFn({ data: { display_name: name } });
+      const headers = await getServerAuthHeaders();
+      const res = await addDriverFn({ data: { display_name: name }, headers });
       setDriverName("");
       setNewDriverLink(res.deep_link);
       await refreshDrivers();
@@ -350,7 +352,8 @@ function Page() {
 
   async function onRemoveDriver(id: string) {
     try {
-      await removeDriverFn({ data: { id } });
+      const headers = await getServerAuthHeaders();
+      await removeDriverFn({ data: { id }, headers });
       await refreshDrivers();
       toast.success("تم الحذف");
     } catch (e) {
@@ -360,7 +363,8 @@ function Page() {
 
   async function onToggleDriver(id: string, next: boolean) {
     try {
-      await toggleDriverFn({ data: { id, is_active: next } });
+      const headers = await getServerAuthHeaders();
+      await toggleDriverFn({ data: { id, is_active: next }, headers });
       await refreshDrivers();
     } catch (e) {
       toast.error((e as Error).message || "فشل التحديث");
