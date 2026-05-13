@@ -97,24 +97,26 @@ function DashboardLayout() {
       if (data) {
         setRestaurant({ name: data.name, logo_url: data.logo_url });
         setRestaurantId(data.id);
+        return;
       }
       // If user has no owned restaurant, check if they're staff somewhere
-      if (!data) {
-        const { data: roles } = await supabase
-          .from("user_roles")
-          .select("restaurant_id, restaurants:restaurant_id(name, logo_url)")
-          .eq("user_id", u.user.id);
-        if (roles && roles.length) {
-          setIsStaffOnly(true);
-          setStaffRestaurantIds(new Set(roles.map((r) => r.restaurant_id)));
-          // pick the first restaurant info
-          const first = roles[0] as unknown as {
-            restaurants: { name: string; logo_url: string | null } | null;
-          };
-          if (first.restaurants) setRestaurant(first.restaurants);
-        }
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("restaurant_id, restaurants:restaurant_id(name, logo_url)")
+        .eq("user_id", u.user.id);
+      if (roles && roles.length) {
+        setIsStaffOnly(true);
+        setStaffRestaurantIds(new Set(roles.map((r) => r.restaurant_id)));
+        const first = roles[0] as unknown as {
+          restaurants: { name: string; logo_url: string | null } | null;
+        };
+        if (first.restaurants) setRestaurant(first.restaurants);
+        return;
       }
+      // No restaurant and no staff role — send to setup
+      navigate({ to: "/setup" });
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogout = async () => {
