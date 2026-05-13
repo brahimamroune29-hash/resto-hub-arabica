@@ -88,11 +88,13 @@ const PurchaseInput = z.object({
 });
 
 export const sendPurchaseNotification = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => PurchaseInput.parse(data))
-  .handler(async ({ data, context }): Promise<NotificationResult> => {
+  .handler(async ({ data }): Promise<NotificationResult> => {
     try {
-      const { supabase } = context;
+      const auth = await getAuthedClientForNotification();
+      if (!auth) return { sent: false, reason: "unauthorized" };
+
+      const { supabase } = auth;
       const { data: r, error } = await supabase
         .from("restaurants")
         .select("name, telegram_chat_id, telegram_bot_token")
