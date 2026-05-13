@@ -446,14 +446,16 @@ function Page() {
         // ignore
       }
       try {
-        const ds = await getDeliveryStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ds = await getDeliveryStatusFn({ headers });
         setDeliveryEnabled(!!ds.enabled);
         setDeliveryToken(ds.token ?? null);
       } catch {
         // ignore
       }
       try {
-        const ts = await getTakeawayStatusFn();
+        const headers = await getServerAuthHeaders();
+        const ts = await getTakeawayStatusFn({ headers });
         setTakeawayEnabled(!!ts.enabled);
         setTakeawayToken(ts.token ?? null);
       } catch {
@@ -508,7 +510,8 @@ function Page() {
     }
     setSavingPin(true);
     try {
-      await setPin({ data: { pin: pinInput } });
+      const headers = await getServerAuthHeaders();
+      await setPin({ data: { pin: pinInput }, headers });
       setCashierEnabled(true);
       setShowPinDialog(pinInput);
       setPinInput("");
@@ -522,7 +525,8 @@ function Page() {
 
   async function onDisableCashier() {
     try {
-      await disable();
+      const headers = await getServerAuthHeaders();
+      await disable({ headers });
       setCashierEnabled(false);
       setConfirmDisable(false);
       toast.success("تم تعطيل نظام الكاشير");
@@ -547,7 +551,8 @@ function Page() {
     }
     setSavingChefPin(true);
     try {
-      await setChefPinFn({ data: { pin: chefPinInput } });
+      const headers = await getServerAuthHeaders();
+      await setChefPinFn({ data: { pin: chefPinInput }, headers });
       setChefEnabled(true);
       setShowChefPinDialog(chefPinInput);
       setChefPinInput("");
@@ -561,7 +566,8 @@ function Page() {
 
   async function onDisableChef() {
     try {
-      await disableChefFn();
+      const headers = await getServerAuthHeaders();
+      await disableChefFn({ headers });
       setChefEnabled(false);
       setConfirmDisableChef(false);
       toast.success("تم تعطيل نظام المطبخ");
@@ -574,7 +580,8 @@ function Page() {
   async function onEnableDelivery() {
     setDeliveryBusy(true);
     try {
-      const res = await enableDeliveryFn();
+      const headers = await getServerAuthHeaders();
+      const res = await enableDeliveryFn({ headers });
       setDeliveryEnabled(true);
       setDeliveryToken(res.token);
       toast.success("تم تفعيل نظام التوصيل");
@@ -588,7 +595,8 @@ function Page() {
   async function onDisableDelivery() {
     setDeliveryBusy(true);
     try {
-      await disableDeliveryFn();
+      const headers = await getServerAuthHeaders();
+      await disableDeliveryFn({ headers });
       setDeliveryEnabled(false);
       setConfirmDisableDelivery(false);
       toast.success("تم تعطيل نظام التوصيل");
@@ -602,7 +610,8 @@ function Page() {
   async function onRegenDelivery() {
     setDeliveryBusy(true);
     try {
-      const res = await regenDeliveryFn();
+      const headers = await getServerAuthHeaders();
+      const res = await regenDeliveryFn({ headers });
       setDeliveryToken(res.token);
       setDeliveryEnabled(true);
       toast.success("تم توليد رابط جديد");
@@ -621,7 +630,8 @@ function Page() {
   async function onEnableTakeaway() {
     setTakeawayBusy(true);
     try {
-      const res = await enableTakeawayFn();
+      const headers = await getServerAuthHeaders();
+      const res = await enableTakeawayFn({ headers });
       setTakeawayEnabled(true);
       setTakeawayToken(res.token);
       toast.success("تم تفعيل الطلب السريع");
@@ -634,7 +644,8 @@ function Page() {
   async function onDisableTakeaway() {
     setTakeawayBusy(true);
     try {
-      await disableTakeawayFn();
+      const headers = await getServerAuthHeaders();
+      await disableTakeawayFn({ headers });
       setTakeawayEnabled(false);
       setConfirmDisableTakeaway(false);
       toast.success("تم تعطيل الطلب السريع");
@@ -647,7 +658,8 @@ function Page() {
   async function onRegenTakeaway() {
     setTakeawayBusy(true);
     try {
-      const res = await regenTakeawayFn();
+      const headers = await getServerAuthHeaders();
+      const res = await regenTakeawayFn({ headers });
       setTakeawayToken(res.token);
       setTakeawayEnabled(true);
       toast.success("تم توليد رابط جديد");
@@ -780,6 +792,7 @@ function Page() {
     const nextButton = (next.buttonColor ?? (sync ? nextColor : buttonColor)).toUpperCase();
     setSavingAppearance(true);
     try {
+      const headers = await getServerAuthHeaders();
       await updateThemeFn({
         data: {
           menu_theme: serializeMenuAppearance({
@@ -791,6 +804,7 @@ function Page() {
             buttonColor: nextButton,
           }),
         },
+        headers,
       });
       setMenuTheme(nextTheme);
       setMenuColor(nextColor);
@@ -902,6 +916,7 @@ function Page() {
           base64,
         };
       }
+      const headers = await getServerAuthHeaders();
       const result = await updateRestaurantSettings({
         data: {
           name: name.trim(),
@@ -909,6 +924,7 @@ function Page() {
           logo_upload: logoUpload,
           google_maps_review_url: gUrl.trim() || null,
         },
+        headers,
       });
       const newLogoUrl = result?.logo_url ?? r.logo_url;
       setR({
