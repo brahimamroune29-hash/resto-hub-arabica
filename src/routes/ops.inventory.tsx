@@ -450,6 +450,8 @@ function OpsInventory() {
       }
       toast.success(tx("تمت إضافة ") + (processed) + tx(" مكون للمخزون"));
       try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session?.access_token) return;
         await notifyPurchase({
           data: {
             restaurantId,
@@ -457,6 +459,7 @@ function OpsInventory() {
             totalCost: total,
             source: "receipt",
           },
+          headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
         });
       } catch {
         // silent
