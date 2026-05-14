@@ -15,11 +15,7 @@ const RETRY_DELAYS_MIN = [3, 5, 5];
 const MAX_FOLLOWUPS = 1 + RETRY_DELAYS_MIN.length; // total messages before owner alert
 
 function checkCronAuth(request: Request): boolean {
-  const expected =
-    process.env.SUPABASE_PUBLISHABLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    "";
+  const expected = process.env.CRON_SECRET || "";
   if (!expected) return false;
   const provided =
     request.headers.get("apikey") ||
