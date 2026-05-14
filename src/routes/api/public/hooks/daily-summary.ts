@@ -2,11 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { runDailySummaryForAll } from "@/server/daily-summary.server";
 
 function checkCronAuth(request: Request): boolean {
-  const expected =
-    process.env.SUPABASE_PUBLISHABLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    "";
+  const expected = process.env.CRON_SECRET || "";
   if (!expected) return false;
   const provided =
     request.headers.get("apikey") ||
