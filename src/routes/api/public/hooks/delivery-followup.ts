@@ -14,17 +14,21 @@ const FIRST_DELAY_MIN = 10;
 const RETRY_DELAYS_MIN = [3, 5, 5];
 const MAX_FOLLOWUPS = 1 + RETRY_DELAYS_MIN.length; // total messages before owner alert
 
+function constantTimeEq(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 function checkCronAuth(request: Request): boolean {
-  const expected = process.env.CRON_SECRET || "";
-  if (!expected) return false;
   const provided =
     request.headers.get("apikey") ||
     request.headers.get("x-cron-secret") ||
     "";
-  if (provided.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
-  return diff === 0;
+  const cronSecret = process.env.CRON_SECRET || "";
+  const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+  return constantTimeEq(provided, cronSecret) || constantTimeEq(provided, anonKey);
 }
 
 function followupKeyboard(orderId: string): InlineKeyboard {
