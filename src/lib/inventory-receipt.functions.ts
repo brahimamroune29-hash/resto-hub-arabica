@@ -41,8 +41,8 @@ export const analyzeReceipt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => Input.parse(data))
   .handler(async ({ data }) => {
-    const key = process.env.LOVABLE_API_KEY;
-    if (!key) throw new Error("LOVABLE_API_KEY missing");
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("OPENAI_API_KEY missing");
 
     const dataUrl = `data:${data.mimeType};base64,${data.imageBase64}`;
 
@@ -54,14 +54,14 @@ export const analyzeReceipt = createServerFn({ method: "POST" })
       "إذا الفاتورة تعرض السعر الإجمالي فقط، احسب unit_price = total/quantity. " +
       "لا تضف أي شرح خارج JSON.";
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: sysPrompt },
           {

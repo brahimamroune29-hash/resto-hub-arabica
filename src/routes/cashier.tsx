@@ -20,7 +20,7 @@ import {
   cashierMarkPaid,
   cashierLogout,
   cashierListReady,
-} from "@/server/cashier.functions";
+} from "@/lib/cashier.functions";
 import { formatDZD } from "@/lib/restaurant";
 import { supabase } from "@/integrations/supabase/client";
 

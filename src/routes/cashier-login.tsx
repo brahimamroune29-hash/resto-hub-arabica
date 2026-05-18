@@ -4,7 +4,7 @@ import { Calculator, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
-import { verifyCashierPin, getPublicCashierLoginInfo } from "@/server/cashier.functions";
+import { verifyCashierPin, getPublicCashierLoginInfo } from "@/lib/cashier.functions";
 import { useTranslation } from "react-i18next";
 
 export const Route = createFileRoute("/cashier-login")({

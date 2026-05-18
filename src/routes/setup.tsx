@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, UploadCloud } from "lucide-react";
-import { createRestaurantSetup } from "@/server/setup.functions";
+import { createRestaurantSetup } from "@/lib/setup.functions";
 import { useTranslation } from "react-i18next";
 
 export const Route = createFileRoute("/setup")({

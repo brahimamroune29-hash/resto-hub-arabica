@@ -11,7 +11,7 @@ import {
   chefStartPreparing,
   chefMarkReady,
   chefLogout,
-} from "@/server/chef.functions";
+} from "@/lib/chef.functions";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/kitchen-screen")({

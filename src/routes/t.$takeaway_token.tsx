@@ -20,7 +20,7 @@ import {
   submitTakeawayOrder,
   getTakeawayOrderStatus,
   type TakeawayMenuResult,
-} from "@/server/takeaway.functions";
+} from "@/lib/takeaway.functions";
 import { formatDZD } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

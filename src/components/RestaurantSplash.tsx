@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Instagram, Facebook, MessageCircle, Star, Sparkles } from "lucide-react";
 import * as LucideIcons from "lucide-react";
-import type { MenuByQrResult } from "@/server/menu.functions";
+import type { MenuByQrResult } from "@/lib/menu.functions";
 
 type SplashData = MenuByQrResult["restaurant"]["splash"];
 

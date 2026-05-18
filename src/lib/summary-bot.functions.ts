@@ -106,11 +106,14 @@ export const setSummaryBotToken = createServerFn({ method: "POST" })
       }
     }
 
-    try {
-      await setBotWebhook(token, webhookUrl, secret);
-    } catch (err) {
-      console.error("[setSummaryBotToken] setWebhook failed", err);
-      throw new Error("فشل تسجيل الويبهوك على البوت. تحقق من التوكن وأعد المحاولة.");
+    const isHttps = publicOrigin.startsWith("https://") && !publicOrigin.includes("localhost");
+    if (isHttps) {
+      try {
+        await setBotWebhook(token, webhookUrl, secret);
+      } catch (err) {
+        console.error("[setSummaryBotToken] setWebhook failed", err);
+        throw new Error("فشل تسجيل الويبهوك على البوت. تحقق من التوكن وأعد المحاولة.");
+      }
     }
 
     const { error: uErr } = await supabaseAdmin

@@ -20,7 +20,7 @@ import {
   submitDeliveryOrder,
   getDeliveryOrderStatus,
   type DeliveryMenuResult,
-} from "@/server/delivery.functions";
+} from "@/lib/delivery.functions";
 import { formatDZD } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -15,46 +15,46 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useServerFn } from "@tanstack/react-start";
-import { setCashierPin, disableCashier, getCashierStatus } from "@/server/cashier.functions";
-import { setChefPin, disableChef, getChefStatus } from "@/server/chef.functions";
-import { updateRestaurantSettings, updateMenuTheme, getSplashSettings, updateSplashSettings } from "@/server/settings.functions";
+import { setCashierPin, disableCashier, getCashierStatus } from "@/lib/cashier.functions";
+import { setChefPin, disableChef, getChefStatus } from "@/lib/chef.functions";
+import { updateRestaurantSettings, updateMenuTheme, getSplashSettings, updateSplashSettings } from "@/lib/settings.functions";
 import {
   getDeliveryStatus,
   enableDelivery,
   disableDelivery,
   regenerateDeliveryToken,
-} from "@/server/delivery.functions";
+} from "@/lib/delivery.functions";
 import {
   getTakeawayStatus,
   enableTakeaway,
   disableTakeaway,
   regenerateTakeawayToken,
-} from "@/server/takeaway.functions";
+} from "@/lib/takeaway.functions";
 import {
   getTelegramStatus,
   generateTelegramLinkToken,
   unlinkTelegram,
   setRestaurantBotToken,
   clearRestaurantBotToken,
-} from "@/server/telegram.functions";
+} from "@/lib/telegram.functions";
 import {
   listDeliveryDrivers,
   addDeliveryDriver,
   removeDeliveryDriver,
   toggleDeliveryDriver,
-} from "@/server/delivery-drivers.functions";
+} from "@/lib/delivery-drivers.functions";
 import {
   getDailySummaryStatus,
   setDailySummaryEnabled,
   sendDailySummaryNow,
-} from "@/server/daily-summary.functions";
+} from "@/lib/daily-summary.functions";
 import {
   getSummaryBotStatus,
   setSummaryBotToken,
   clearSummaryBotToken,
   generateSummaryLinkToken,
   unlinkSummaryTelegram,
-} from "@/server/summary-bot.functions";
+} from "@/lib/summary-bot.functions";
 import {
   MENU_LAYOUTS,
   MENU_THEMES,

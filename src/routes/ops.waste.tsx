@@ -4,7 +4,7 @@ import { Plus, Trash2, AlertTriangle, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { sendLowStockAlert } from "@/server/ops-alerts.functions";
+import { sendLowStockAlert } from "@/lib/ops-alerts.functions";
 import { useRestaurantId } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -24,16 +24,16 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getMenuByQr, type MenuByQrResult } from "@/server/menu.functions";
+import { getMenuByQr, type MenuByQrResult } from "@/lib/menu.functions";
 import {
   submitOrder,
   getOrderStatus,
   submitReview,
   type OrderStatusInfo,
-} from "@/server/order.functions";
+} from "@/lib/order.functions";
 import { formatDZD } from "@/lib/restaurant";
-import { askMenuBot } from "@/server/menu-chat.functions";
-import { submitComplaint } from "@/server/complaint.functions";
+import { askMenuBot } from "@/lib/menu-chat.functions";
+import { submitComplaint } from "@/lib/complaint.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { getMenuTheme, getMenuColors, parseMenuAppearance, type MenuLayoutId } from "@/lib/menu-themes";
 import { Button } from "@/components/ui/button";

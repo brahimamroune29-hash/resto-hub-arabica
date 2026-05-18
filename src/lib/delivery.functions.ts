@@ -15,8 +15,8 @@ function newToken() {
   return randomBytes(12).toString("hex");
 }
 
-async function getOwnerRestaurant(supabase: any, userId: string) {
-  const { data, error } = await supabase
+async function getOwnerRestaurant(userId: string) {
+  const { data, error } = await supabaseAdmin
     .from("restaurants")
     .select("id, delivery_enabled, delivery_token")
     .eq("owner_id", userId)
@@ -31,16 +31,16 @@ async function getOwnerRestaurant(supabase: any, userId: string) {
 export const getDeliveryStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const r = await getOwnerRestaurant(supabase, userId);
+    const { userId } = context;
+    const r = await getOwnerRestaurant(userId);
     return { enabled: !!r.delivery_enabled, token: r.delivery_token };
   });
 
 export const enableDelivery = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const r = await getOwnerRestaurant(supabase, userId);
+    const { userId } = context;
+    const r = await getOwnerRestaurant(userId);
     const token = r.delivery_token ?? newToken();
     const { error } = await supabaseAdmin
       .from("restaurants")
@@ -53,8 +53,8 @@ export const enableDelivery = createServerFn({ method: "POST" })
 export const disableDelivery = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const r = await getOwnerRestaurant(supabase, userId);
+    const { userId } = context;
+    const r = await getOwnerRestaurant(userId);
     const { error } = await supabaseAdmin
       .from("restaurants")
       .update({ delivery_enabled: false })
@@ -66,8 +66,8 @@ export const disableDelivery = createServerFn({ method: "POST" })
 export const regenerateDeliveryToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const r = await getOwnerRestaurant(supabase, userId);
+    const { userId } = context;
+    const r = await getOwnerRestaurant(userId);
     const token = newToken();
     const { error } = await supabaseAdmin
       .from("restaurants")

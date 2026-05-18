@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, Loader2, UploadCloud, Sparkles, ImageIcon, X, Ute
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { parseMenuImage } from "@/server/menu-import.functions";
+import { parseMenuImage } from "@/lib/menu-import.functions";
 import { useRestaurantId, formatDZD } from "@/lib/restaurant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

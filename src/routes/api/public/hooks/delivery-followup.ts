@@ -27,8 +27,8 @@ function checkCronAuth(request: Request): boolean {
     request.headers.get("x-cron-secret") ||
     "";
   const cronSecret = process.env.CRON_SECRET || "";
-  const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY || "";
-  return constantTimeEq(provided, cronSecret) || constantTimeEq(provided, anonKey);
+  if (!cronSecret) return false;
+  return constantTimeEq(provided, cronSecret);
 }
 
 function followupKeyboard(orderId: string): InlineKeyboard {

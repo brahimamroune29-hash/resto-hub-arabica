@@ -367,7 +367,7 @@ export const askAdminBot = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error("الخدمة غير متاحة حالياً");
 
     const { supabase, userId } = context as { supabase: any; userId: string };
@@ -398,13 +398,13 @@ ${ctx}
       ...data.messages.map((m: ChatMsg) => ({ role: m.role, content: m.content })),
     ];
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: "google/gemini-2.5-flash", messages }),
+      body: JSON.stringify({ model: "gpt-4o-mini", messages }),
     });
 
     if (res.status === 429) throw new Error("الكثير من الطلبات، حاول بعد قليل");

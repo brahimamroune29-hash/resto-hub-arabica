@@ -13,21 +13,21 @@ export const parseMenuImage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => InputSchema.parse(d))
   .handler(async ({ data }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY غير مهيأ");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY غير مهيأ");
 
     const url = data.imageBase64.startsWith("data:")
       ? data.imageBase64
       : `data:image/jpeg;base64,${data.imageBase64}`;
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
@@ -84,7 +84,7 @@ export const parseMenuImage = createServerFn({ method: "POST" })
     });
 
     if (res.status === 429) throw new Error("تم تجاوز الحد، حاول لاحقاً");
-    if (res.status === 402) throw new Error("الرصيد منتهي. الرجاء إضافة رصيد لـ Lovable AI");
+    if (res.status === 402) throw new Error("الرصيد منتهي. الرجاء التحقق من حساب OpenAI");
     if (!res.ok) {
       const t = await res.text().catch(() => "");
       throw new Error(`فشل تحليل الصورة (${res.status}) ${t.slice(0, 200)}`);

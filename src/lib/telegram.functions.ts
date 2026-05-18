@@ -162,11 +162,16 @@ export const setRestaurantBotToken = createServerFn({ method: "POST" })
       }
     }
 
-    try {
-      await setBotWebhook(token, webhookUrl, secret);
-    } catch (err) {
-      console.error("[setRestaurantBotToken] setWebhook failed", err);
-      throw new Error("فشل تسجيل الويبهوك على البوت. تحقق من التوكن وأعد المحاولة.");
+    // Skip webhook registration when running on localhost/HTTP (dev mode).
+    // Telegram requires HTTPS; webhook will auto-register on first save after deployment.
+    const isHttps = origin.startsWith("https://") && !origin.includes("localhost");
+    if (isHttps) {
+      try {
+        await setBotWebhook(token, webhookUrl, secret);
+      } catch (err) {
+        console.error("[setRestaurantBotToken] setWebhook failed", err);
+        throw new Error("فشل تسجيل الويبهوك على البوت. تحقق من التوكن وأعد المحاولة.");
+      }
     }
 
     // Persist + reset previous chat ids (they belonged to the previous/shared bot)
