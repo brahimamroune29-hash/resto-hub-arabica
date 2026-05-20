@@ -1,12 +1,12 @@
 /**
  * Returns the app's public base URL.
- * On the browser: always uses window.location.origin so QR codes and links
- * always reflect the actual domain the user is on (works with any custom domain).
- * On the server (SSR): falls back to VITE_APP_URL env var.
+ * Priority: VITE_APP_URL (set in Vercel env vars) → window.location.origin fallback.
+ * Set VITE_APP_URL=https://www.sahldz.com in Vercel project settings to lock QR codes
+ * to the custom domain (avoids Vercel's internal *.vercel.app URL appearing in QR codes).
  */
 export function appOrigin(): string {
-  if (typeof window !== "undefined") return window.location.origin;
   const env = import.meta.env.VITE_APP_URL as string | undefined;
   if (env) return env.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
   return "";
 }
