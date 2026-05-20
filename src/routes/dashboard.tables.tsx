@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { appOrigin } from "@/lib/app-url";
 import {
   Dialog,
   DialogContent,
@@ -268,7 +269,7 @@ function Page() {
 function TableCard({ table, onDelete }: { table: TableRow; onDelete: () => void }) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/r/${table.qr_token}` : "";
+  const url = `${appOrigin()}/r/${table.qr_token}`;
 
   useEffect(() => {
     if (!canvasRef.current || !url) return;
@@ -303,6 +304,7 @@ function TableCard({ table, onDelete }: { table: TableRow; onDelete: () => void 
       <div className="bg-card p-3 rounded-xl border border-border">
         <canvas ref={canvasRef} />
       </div>
+      <p className="text-[11px] text-muted-foreground break-all text-center select-all">{url}</p>
       <div className="flex gap-2 w-full">
         <Button onClick={download} variant="outline" className="flex-1 hover:bg-primary hover:text-primary-foreground hover:border-primary">
           <Download className="ml-2 h-4 w-4" />
