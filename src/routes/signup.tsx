@@ -1,10 +1,14 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
+import { AuthShell } from "@/components/AuthShell";
+import { getPostAuthRedirect, redirectIfAuthed, translateAuthError } from "@/lib/auth";
+import { useTranslation } from "react-i18next";
 
 export const Route = createFileRoute("/signup")({
-  beforeLoad: () => {
-    throw redirect({ to: "/login" });
-  },
-  component: () => null,
+  beforeLoad: redirectIfAuthed,
+  component: SignupPage,
 });
 
 function SignupPage() {
