@@ -5,6 +5,7 @@ import { lovable } from "@/integrations/lovable";
 import { AuthShell } from "@/components/AuthShell";
 import { getPostAuthRedirect, redirectIfAuthed, translateAuthError } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
+import { appOrigin } from "@/lib/app-url";
 
 export const Route = createFileRoute("/signup")({
   beforeLoad: redirectIfAuthed,
@@ -30,8 +31,7 @@ function SignupPage() {
         email,
         password,
         options: {
-          emailRedirectTo:
-            typeof window !== "undefined" ? `${window.location.origin}/login` : undefined,
+          emailRedirectTo: `${appOrigin()}/login`,
         },
       });
       if (error) {
