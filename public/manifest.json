@@ -1,10 +1,10 @@
 {
-  "name": "Restaurant Menu",
-  "short_name": "Menu",
+  "name": "ساهل DZ",
+  "short_name": "ساهل DZ",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "theme_color": "#16a34a",
   "icons": [
     { "src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon" }
   ]
