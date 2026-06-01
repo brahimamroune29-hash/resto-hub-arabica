@@ -9,9 +9,12 @@ function constantTimeEq(a: string, b: string): boolean {
 }
 
 function checkCronAuth(request: Request): boolean {
+  const auth = request.headers.get("authorization") ?? "";
+  const fromBearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const provided =
     request.headers.get("apikey") ||
     request.headers.get("x-cron-secret") ||
+    fromBearer ||
     "";
   const cronSecret = process.env.CRON_SECRET || "";
   if (!cronSecret) return false;
