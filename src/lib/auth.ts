@@ -49,9 +49,15 @@ export function translateAuthError(message: string): string {
     return "هذا البريد الإلكتروني مستخدم بالفعل";
   if (m.includes("password") && m.includes("6")) return "كلمة المرور قصيرة جداً (6 أحرف على الأقل)";
   if (m.includes("password")) return "كلمة المرور غير صالحة";
+  if (m.includes("rate") || m.includes("too many")) return "محاولات كثيرة، حاول لاحقاً";
+  if (m.includes("sending") || m.includes("confirmation email"))
+    return "تعذّر إرسال بريد التأكيد، حاول مرة أخرى بعد قليل";
+  if (m.includes("email signups") || m.includes("signup") || m.includes("sign up") || m.includes("not enabled"))
+    return "التسجيل مغلق مؤقتاً، تواصل مع المسؤول";
+  if (m.includes("not authorized") || m.includes("not allowed"))
+    return "هذا البريد الإلكتروني غير مصرح له بالتسجيل";
   if (m.includes("email")) return "البريد الإلكتروني غير صالح";
-  if (m.includes("rate")) return "محاولات كثيرة، حاول لاحقاً";
-  return "حدث خطأ، حاول مرة أخرى";
+  return `حدث خطأ: ${message}`;
 }
 
 /** Decide where to send a freshly-authenticated user. */
