@@ -22,6 +22,7 @@ import {
   Sparkles,
   Send,
   Loader2,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getMenuByQr, type MenuByQrResult } from "@/lib/menu.functions";
@@ -70,6 +71,14 @@ type CartItem = {
 };
 
 type MenuItem = MenuByQrResult["menu_items"][number];
+
+type SavedOrder = {
+  order_id: string;
+  daily_number: number | null;
+  total: number;
+  status: string;
+  created_at: number;
+};
 
 function categoryEmoji(name: string): string | null {
   const n = name.toLowerCase();
@@ -124,6 +133,9 @@ function Page() {
   const [submitting, setSubmitting] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [activeOrderNumber, setActiveOrderNumber] = useState<string | null>(null);
+  const [ordersHistory, setOrdersHistory] = useState<SavedOrder[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<SavedOrder[]>([]);
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [orderNotes, setOrderNotes] = useState("");
 
@@ -180,7 +192,17 @@ function Page() {
     } catch {
       // ignore
     }
-  }, [orderKey]);
+    try {
+      const hist = localStorage.getItem(`orders_history_${qr_token}`);
+      if (hist) {
+        const arr: SavedOrder[] = JSON.parse(hist);
+        setOrdersHistory(arr);
+        historyRef.current = arr;
+      }
+    } catch {
+      // ignore
+    }
+  }, [orderKey, qr_token]);
 
   const clearActiveOrder = useCallback(() => {
     try {
@@ -191,6 +213,38 @@ function Page() {
     }
     setActiveOrderId(null);
   }, [orderKey, activeOrderId]);
+
+  // Poll status for history orders not yet paid
+  useEffect(() => {
+    let stopped = false;
+    async function tickHistory() {
+      const active = historyRef.current.filter((o) => o.status !== "paid");
+      if (active.length === 0) return;
+      const updated = [...historyRef.current];
+      let changed = false;
+      await Promise.all(
+        active.map(async (o) => {
+          try {
+            const res = await getOrderStatus({ data: { order_id: o.order_id, qr_token } });
+            if (stopped || !res) return;
+            const idx = updated.findIndex((x) => x.order_id === o.order_id);
+            if (idx !== -1 && updated[idx].status !== res.status) {
+              updated[idx] = { ...updated[idx], status: res.status, total: res.total ?? updated[idx].total, daily_number: res.daily_number ?? updated[idx].daily_number };
+              changed = true;
+            }
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!stopped && changed) {
+        historyRef.current = updated;
+        setOrdersHistory([...updated]);
+        try { localStorage.setItem(`orders_history_${qr_token}`, JSON.stringify(updated)); } catch { /* ignore */ }
+      }
+    }
+    tickHistory();
+    const id = setInterval(tickHistory, 8000);
+    return () => { stopped = true; clearInterval(id); };
+  }, [qr_token]);
 
   // Load cart from localStorage
   useEffect(() => {
@@ -264,6 +318,12 @@ function Page() {
       setOrderNotes("");
       setDrawerOpen(false);
       setActiveOrderId(res.order_id);
+      // Add to orders history
+      const newEntry: SavedOrder = { order_id: res.order_id, daily_number: res.daily_number ?? null, total: res.total ?? 0, status: "new", created_at: Date.now() };
+      const updatedHist = [newEntry, ...historyRef.current.filter((o) => o.order_id !== res.order_id)];
+      historyRef.current = updatedHist;
+      setOrdersHistory(updatedHist);
+      try { localStorage.setItem(`orders_history_${qr_token}`, JSON.stringify(updatedHist)); } catch { /* ignore */ }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "تعذّر إرسال الطلب";
       toast.error(msg.includes("NOT_FOUND") ? "الطاولة غير موجودة" : "تعذّر إرسال الطلب");
@@ -416,6 +476,14 @@ function Page() {
         qrToken={qr_token}
         initialOrderNumber={activeOrderNumber}
         onComplete={clearActiveOrder}
+        ordersHistory={ordersHistory}
+        historyOpen={historyOpen}
+        setHistoryOpen={setHistoryOpen}
+        onTrackOrder={(o) => {
+          clearActiveOrder();
+          setActiveOrderId(o.order_id);
+          try { localStorage.setItem(orderKey, o.order_id); } catch { /* ignore */ }
+        }}
       />
     );
   }
@@ -487,6 +555,18 @@ function Page() {
                 <span className="opacity-70">· استمتع بتجربتك</span>
               </div>
             </div>
+            {ordersHistory.length > 0 && (
+              <button
+                onClick={() => setHistoryOpen(true)}
+                className="relative flex items-center justify-center w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 transition shrink-0"
+                aria-label="طلباتي"
+              >
+                <History className="w-5 h-5" />
+                <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-amber-400 text-black text-[10px] font-bold flex items-center justify-center">
+                  {ordersHistory.length}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1214,11 +1294,19 @@ function OrderTrackingScreen({
   qrToken,
   initialOrderNumber,
   onComplete,
+  ordersHistory,
+  historyOpen,
+  setHistoryOpen,
+  onTrackOrder,
 }: {
   orderId: string;
   qrToken: string;
   initialOrderNumber?: string | null;
   onComplete: () => void;
+  ordersHistory: SavedOrder[];
+  historyOpen: boolean;
+  setHistoryOpen: (v: boolean) => void;
+  onTrackOrder: (o: SavedOrder) => void;
 }) {
   const [info, setInfo] = useState<OrderStatusInfo | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -1333,31 +1421,63 @@ function OrderTrackingScreen({
         </div>
       </div>
 
-      {/* Action buttons: order more / rate now */}
+      {/* Action buttons: order more / history / rate now */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="w-full max-w-md mt-10 grid grid-cols-1 sm:grid-cols-2 gap-3"
+        className="w-full max-w-md mt-10 flex flex-col gap-3"
       >
-        <Button
-          variant="outline"
-          className="h-12 gap-2"
-          onClick={onComplete}
-        >
-          <Plus className="w-4 h-4" />
-          اطلب شيئاً آخر
-        </Button>
-        <Button
-          variant="default"
-          className="h-12 gap-2"
-          disabled={reviewDone}
-          onClick={() => setReviewOpen(true)}
-        >
-          <Star className="w-4 h-4" />
-          {reviewDone ? "تم التقييم ✓" : "قيّم خدمتنا"}
-        </Button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Button variant="outline" className="h-12 gap-2" onClick={onComplete}>
+            <Plus className="w-4 h-4" />
+            اطلب شيئاً آخر
+          </Button>
+          <Button variant="default" className="h-12 gap-2" disabled={reviewDone} onClick={() => setReviewOpen(true)}>
+            <Star className="w-4 h-4" />
+            {reviewDone ? "تم التقييم ✓" : "قيّم خدمتنا"}
+          </Button>
+        </div>
+        {ordersHistory.length > 1 && (
+          <Button variant="ghost" className="h-10 gap-2 text-sm" onClick={() => setHistoryOpen(true)}>
+            <History className="w-4 h-4" />
+            عرض كل طلباتي ({ordersHistory.length})
+          </Button>
+        )}
       </motion.div>
+
+      {/* History Sheet */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto" dir="rtl">
+          <SheetHeader>
+            <SheetTitle className="text-right flex items-center gap-2">
+              <History className="w-5 h-5" />
+              طلباتي
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {ordersHistory.map((o) => {
+              const isActive = o.order_id === orderId;
+              const statusLabel = o.status === "paid" ? "مدفوع ✅" : o.status === "ready" ? "جاهز 🔔" : o.status === "preparing" ? "قيد التحضير 👨‍🍳" : "تم الاستلام ⏳";
+              const statusColor = o.status === "paid" ? "text-green-600" : o.status === "ready" ? "text-amber-500" : o.status === "preparing" ? "text-blue-500" : "text-muted-foreground";
+              const codeStr = o.daily_number != null ? String(o.daily_number).padStart(3, "0") : "—";
+              const time = new Date(o.created_at).toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" });
+              return (
+                <div key={o.order_id} className={`rounded-2xl p-4 flex items-center gap-4 ${isActive ? "bg-primary/10 border-2 border-primary" : "bg-muted/40"}`}>
+                  <div className="text-3xl font-extrabold font-mono text-primary w-16 text-center">{codeStr}</div>
+                  <div className="flex-1">
+                    <div className={`font-semibold text-sm ${statusColor}`}>{statusLabel}{isActive && " · الحالي"}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{formatDZD(o.total)} · {time}</div>
+                  </div>
+                  {!isActive && o.status !== "paid" && (
+                    <button onClick={() => { onTrackOrder(o); setHistoryOpen(false); }} className="text-xs text-primary underline underline-offset-2 font-semibold">تتبّع</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <ReviewModal
         open={reviewOpen}
