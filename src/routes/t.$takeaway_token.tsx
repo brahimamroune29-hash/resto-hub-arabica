@@ -1,5 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -13,6 +13,7 @@ import {
   Package,
   Check,
   ShoppingCart,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,6 +43,14 @@ type CartItem = {
   quantity: number;
 };
 
+type SavedOrder = {
+  order_id: string;
+  daily_number: number | null;
+  total: number;
+  status: string;
+  created_at: number;
+};
+
 export const Route = createFileRoute("/t/$takeaway_token")({
   component: Page,
 });
@@ -69,6 +78,9 @@ function Page() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [ordersHistory, setOrdersHistory] = useState<SavedOrder[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyRef = useRef<SavedOrder[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -138,6 +150,16 @@ function Page() {
     } catch {
       // ignore
     }
+    try {
+      const hist = localStorage.getItem(`torders_${takeaway_token}`);
+      if (hist) {
+        const arr: SavedOrder[] = JSON.parse(hist);
+        setOrdersHistory(arr);
+        historyRef.current = arr;
+      }
+    } catch {
+      // ignore
+    }
   }, [cartKey, takeaway_token]);
 
   useEffect(() => {
@@ -184,6 +206,49 @@ function Page() {
       clearInterval(id);
     };
   }, [tracking?.order_id, takeaway_token]);
+
+  // Poll status for all history orders that are not yet ready
+  useEffect(() => {
+    let stopped = false;
+    async function tickHistory() {
+      const active = historyRef.current.filter((o) => o.status !== "ready");
+      if (active.length === 0) return;
+      const updated = [...historyRef.current];
+      let changed = false;
+      await Promise.all(
+        active.map(async (o) => {
+          try {
+            const res = await getTakeawayOrderStatus({
+              data: { token: takeaway_token, order_id: o.order_id },
+            });
+            if (stopped) return;
+            const idx = updated.findIndex((x) => x.order_id === o.order_id);
+            if (idx !== -1 && updated[idx].status !== res.status) {
+              updated[idx] = { ...updated[idx], status: res.status, total: res.total, daily_number: res.daily_number ?? updated[idx].daily_number };
+              changed = true;
+            }
+          } catch {
+            // ignore
+          }
+        }),
+      );
+      if (!stopped && changed) {
+        historyRef.current = updated;
+        setOrdersHistory([...updated]);
+        try {
+          localStorage.setItem(`torders_${takeaway_token}`, JSON.stringify(updated));
+        } catch {
+          // ignore
+        }
+      }
+    }
+    tickHistory();
+    const id = setInterval(tickHistory, 8000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [takeaway_token]);
 
   useEffect(() => {
     try {
@@ -281,8 +346,14 @@ function Page() {
         status: "new",
       };
       setTracking(next);
+      // Add to orders history
+      const newEntry: SavedOrder = { ...next, created_at: Date.now() };
+      const updatedHist = [newEntry, ...historyRef.current.filter((o) => o.order_id !== res.order_id)];
+      historyRef.current = updatedHist;
+      setOrdersHistory(updatedHist);
       try {
         localStorage.setItem(`tlast_${takeaway_token}`, JSON.stringify(next));
+        localStorage.setItem(`torders_${takeaway_token}`, JSON.stringify(updatedHist));
       } catch {
         // ignore
       }
@@ -411,18 +482,28 @@ function Page() {
           </div>
         </div>
 
-        <Button
-          onClick={() => {
-            setTracking(null);
-            try {
-              localStorage.removeItem(`tlast_${takeaway_token}`);
-            } catch {
-              // ignore
-            }
-          }}
-        >
-          طلب جديد
-        </Button>
+        <div className="flex gap-3 flex-wrap justify-center">
+          <Button
+            variant="outline"
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <History className="w-4 h-4" />
+            طلباتي ({ordersHistory.length})
+          </Button>
+          <Button
+            onClick={() => {
+              setTracking(null);
+              try {
+                localStorage.removeItem(`tlast_${takeaway_token}`);
+              } catch {
+                // ignore
+              }
+            }}
+          >
+            طلب جديد
+          </Button>
+        </div>
       </div>
     );
   }
@@ -449,6 +530,18 @@ function Page() {
             </div>
             <h1 className="text-lg font-extrabold truncate">{data.restaurant.name}</h1>
           </div>
+          {ordersHistory.length > 0 && (
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="relative flex items-center justify-center w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 transition"
+              aria-label="طلباتي"
+            >
+              <History className="w-5 h-5" />
+              <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-amber-400 text-black text-[10px] font-bold flex items-center justify-center">
+                {ordersHistory.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {data.categories.length > 0 && (
@@ -571,6 +664,57 @@ function Page() {
           </motion.button>
         )}
       </AnimatePresence>
+
+      {/* Orders History Drawer */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto" dir="rtl">
+          <SheetHeader>
+            <SheetTitle className="text-right flex items-center gap-2">
+              <History className="w-5 h-5" />
+              طلباتي
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {ordersHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">لا توجد طلبات سابقة</p>
+            ) : (
+              ordersHistory.map((o) => {
+                const statusLabel =
+                  o.status === "ready" ? "جاهز للاستلام ✅" :
+                  o.status === "preparing" ? "قيد التحضير 👨‍🍳" :
+                  "تم الاستلام ⏳";
+                const statusColor =
+                  o.status === "ready" ? "text-green-600" :
+                  o.status === "preparing" ? "text-amber-500" :
+                  "text-muted-foreground";
+                const codeStr = o.daily_number != null ? String(o.daily_number).padStart(3, "0") : "—";
+                const time = new Date(o.created_at).toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" });
+                return (
+                  <div key={o.order_id} className="bg-muted/40 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="text-3xl font-extrabold font-mono text-primary w-16 text-center">{codeStr}</div>
+                    <div className="flex-1">
+                      <div className={`font-semibold text-sm ${statusColor}`}>{statusLabel}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{formatDZD(o.total)} · {time}</div>
+                    </div>
+                    {o.status !== "ready" && (
+                      <button
+                        onClick={() => {
+                          setTracking({ order_id: o.order_id, daily_number: o.daily_number, total: o.total, status: o.status });
+                          try { localStorage.setItem(`tlast_${takeaway_token}`, JSON.stringify(o)); } catch { /**/ }
+                          setHistoryOpen(false);
+                        }}
+                        className="text-xs text-primary underline underline-offset-2 font-semibold"
+                      >
+                        تتبّع
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto" dir="rtl">
