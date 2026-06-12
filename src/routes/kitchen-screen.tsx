@@ -12,6 +12,13 @@ import {
   chefMarkReady,
   chefLogout,
 } from "@/lib/chef.functions";
+import {
+  getIndividualChefContext,
+  individualChefListActive,
+  individualChefStartPreparing,
+  individualChefMarkReady,
+  individualChefLogout,
+} from "@/lib/individual-chef.functions";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/kitchen-screen")({
@@ -49,8 +56,15 @@ function Page() {
   const startFn = useServerFn(chefStartPreparing);
   const readyFn = useServerFn(chefMarkReady);
   const logoutFn = useServerFn(chefLogout);
+  const iCtxFn = useServerFn(getIndividualChefContext);
+  const iListFn = useServerFn(individualChefListActive);
+  const iStartFn = useServerFn(individualChefStartPreparing);
+  const iReadyFn = useServerFn(individualChefMarkReady);
+  const iLogoutFn = useServerFn(individualChefLogout);
 
   const [token, setToken] = useState<string | null>(null);
+  const [isIndividual, setIsIndividual] = useState(false);
+  const [chefName, setChefName] = useState<string | null>(null);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -63,16 +77,43 @@ function Page() {
     return () => clearInterval(i);
   }, []);
 
-  // Auth
+  // Auth — supports both individual chef sessions and the legacy shared session
   useEffect(() => {
+    const it = localStorage.getItem("individual_chef_token");
+    const iexp = localStorage.getItem("individual_chef_expires");
+    if (it && iexp && new Date(iexp) > new Date()) {
+      setIsIndividual(true);
+      setToken(it);
+      iCtxFn({ data: { token: it } })
+        .then((res) => {
+          setRestaurant(res.restaurant);
+          setChefName(res.chefName);
+        })
+        .catch(() => {
+          const r = localStorage.getItem("individual_chef_restaurant");
+          const rid = r ? (JSON.parse(r) as Restaurant).id : "";
+          localStorage.removeItem("individual_chef_token");
+          localStorage.removeItem("individual_chef_expires");
+          navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
+        });
+      return;
+    }
     const t = localStorage.getItem("chef_token");
     const exp = localStorage.getItem("chef_expires");
     if (!t || !exp || new Date(exp) < new Date()) {
+      const ir = localStorage.getItem("individual_chef_restaurant");
+      if (ir) {
+        const rid = (JSON.parse(ir) as Restaurant).id;
+        localStorage.removeItem("individual_chef_token");
+        localStorage.removeItem("individual_chef_expires");
+        navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
+        return;
+      }
       const r = localStorage.getItem("chef_restaurant");
       const rid = r ? (JSON.parse(r) as Restaurant).id : "";
       localStorage.removeItem("chef_token");
       localStorage.removeItem("chef_expires");
-      navigate({ to: "/kitchen-login", search: { r: rid } });
+      navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
       return;
     }
     setToken(t);
@@ -82,19 +123,19 @@ function Page() {
         localStorage.removeItem("chef_token");
         const r = localStorage.getItem("chef_restaurant");
         const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-        navigate({ to: "/kitchen-login", search: { r: rid } });
+        navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
       });
-  }, [ctxFn, navigate]);
+  }, [ctxFn, iCtxFn, navigate]);
 
   const refresh = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await listFn({ data: { token } });
+      const res = await (isIndividual ? iListFn : listFn)({ data: { token } });
       setOrders(res.orders);
     } catch {
       // silent
     }
-  }, [token, listFn]);
+  }, [token, isIndividual, listFn, iListFn]);
 
   useEffect(() => {
     if (!token || !restaurant) return;
@@ -159,7 +200,7 @@ function Page() {
     if (!token) return;
     setBusy(o.id);
     try {
-      await startFn({ data: { token, orderId: o.id } });
+      await (isIndividual ? iStartFn : startFn)({ data: { token, orderId: o.id } });
       setOrders((prev) =>
         prev.map((x) => (x.id === o.id ? { ...x, status: "preparing", acknowledged: true } : x)),
       );
@@ -174,7 +215,7 @@ function Page() {
     if (!token) return;
     setBusy(o.id);
     try {
-      await readyFn({ data: { token, orderId: o.id } });
+      await (isIndividual ? iReadyFn : readyFn)({ data: { token, orderId: o.id } });
       setOrders((prev) => prev.filter((x) => x.id !== o.id));
     } catch (e) {
       toast.error((e as Error).message);
@@ -186,16 +227,26 @@ function Page() {
   async function onLogout() {
     if (token) {
       try {
-        await logoutFn({ data: { token } });
+        await (isIndividual ? iLogoutFn : logoutFn)({ data: { token } });
       } catch {
         // ignore
       }
+    }
+    if (isIndividual) {
+      const r = localStorage.getItem("individual_chef_restaurant");
+      const rid = r ? (JSON.parse(r) as Restaurant).id : "";
+      localStorage.removeItem("individual_chef_token");
+      localStorage.removeItem("individual_chef_expires");
+      localStorage.removeItem("individual_chef_name");
+      localStorage.removeItem("individual_chef_id");
+      navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
+      return;
     }
     const r = localStorage.getItem("chef_restaurant");
     const rid = r ? (JSON.parse(r) as Restaurant).id : "";
     localStorage.removeItem("chef_token");
     localStorage.removeItem("chef_expires");
-    navigate({ to: "/kitchen-login", search: { r: rid } });
+    navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
   }
 
   if (!restaurant) {
@@ -225,6 +276,9 @@ function Page() {
               <ChefIcon className="w-4 h-4 text-primary" />
               مطبخ - {restaurant.name}
             </div>
+            {chefName && (
+              <div className="text-xs text-muted-foreground truncate">👨‍🍳 {chefName}</div>
+            )}
           </div>
         </div>
 
