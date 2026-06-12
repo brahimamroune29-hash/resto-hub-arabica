@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Trash2, Upload, UserPlus, X, Mail, Users, Calculator, Copy, Shuffle, Power, ChefHat, Palette, Check, Bike, RefreshCw, Send, Bell, ShoppingBag, QrCode, Sparkles, Plus as PlusIcon, Image as ImageIcon, Video as VideoIcon } from "lucide-react";
+import { Loader2, Trash2, Upload, UserPlus, X, Mail, Users, Calculator, Copy, Shuffle, Power, ChefHat, Palette, Check, Bike, RefreshCw, Send, Bell, ShoppingBag, QrCode, Sparkles, Plus as PlusIcon, Image as ImageIcon, Video as VideoIcon, UtensilsCrossed, KeyRound, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,20 @@ import {
 import { useServerFn } from "@tanstack/react-start";
 import { setCashierPin, disableCashier, getCashierStatus } from "@/lib/cashier.functions";
 import { setChefPin, disableChef, getChefStatus } from "@/lib/chef.functions";
+import {
+  listIndividualChefs,
+  addIndividualChef,
+  updateIndividualChefPin,
+  toggleIndividualChef,
+  deleteIndividualChef,
+} from "@/lib/individual-chef.functions";
+import {
+  listWaiters,
+  addWaiter,
+  updateWaiterPin,
+  toggleWaiter,
+  deleteWaiter,
+} from "@/lib/waiter.functions";
 import { updateRestaurantSettings, updateMenuTheme, getSplashSettings, updateSplashSettings } from "@/lib/settings.functions";
 import {
   getDeliveryStatus,
@@ -78,8 +92,17 @@ type Restaurant = {
   google_maps_review_url: string | null;
 };
 
-type StaffMember = { id: string; user_id: string; role: "admin" | "staff"; email?: string };
-type Invitation = { id: string; email: string; role: "admin" | "staff"; created_at: string };
+type ManagerRole = "staff" | "production_manager" | "operations_manager" | "hr_manager" | "purchasing_manager";
+type StaffMember = { id: string; user_id: string; role: ManagerRole; email?: string };
+type Invitation = { id: string; email: string; role: ManagerRole; created_at: string };
+
+const MANAGER_ROLE_LABELS: Record<ManagerRole, string> = {
+  staff: "موظف (وصول محدود)",
+  production_manager: "مسؤول الإنتاج",
+  operations_manager: "مسؤول التشغيل",
+  hr_manager: "مسؤول الموارد البشرية",
+  purchasing_manager: "مسؤول المشتريات",
+};
 
 function Page() {
   const navigate = useNavigate();
@@ -97,6 +120,7 @@ function Page() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [invites, setInvites] = useState<Invitation[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<ManagerRole>("staff");
   const [inviting, setInviting] = useState(false);
   // Cashier
   const setPin = useServerFn(setCashierPin);
@@ -198,6 +222,36 @@ function Page() {
   const [driverBusy, setDriverBusy] = useState(false);
   const [newDriverLink, setNewDriverLink] = useState<string | null>(null);
   const driversPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Individual chef accounts
+  const listIndividualChefsFn = useServerFn(listIndividualChefs);
+  const addIndividualChefFn = useServerFn(addIndividualChef);
+  const updateIndividualChefPinFn = useServerFn(updateIndividualChefPin);
+  const toggleIndividualChefFn = useServerFn(toggleIndividualChef);
+  const deleteIndividualChefFn = useServerFn(deleteIndividualChef);
+  type IndividualChef = { id: string; name: string; is_active: boolean; employee_id: string | null; created_at: string };
+  const [individualChefs, setIndividualChefs] = useState<IndividualChef[]>([]);
+  const [newChefName, setNewChefName] = useState("");
+  const [newChefPin, setNewChefPin] = useState("");
+  const [addingChef, setAddingChef] = useState(false);
+  const [chefPinEdit, setChefPinEdit] = useState<{ id: string; pin: string } | null>(null);
+  const [savingChefPinEdit, setSavingChefPinEdit] = useState(false);
+  const [showChefPin, setShowChefPin] = useState<string | null>(null);
+
+  // Individual waiter accounts
+  const listWaitersFn = useServerFn(listWaiters);
+  const addWaiterFn = useServerFn(addWaiter);
+  const updateWaiterPinFn = useServerFn(updateWaiterPin);
+  const toggleWaiterFn = useServerFn(toggleWaiter);
+  const deleteWaiterFn = useServerFn(deleteWaiter);
+  type WaiterRow = { id: string; name: string; is_active: boolean; employee_id: string | null; created_at: string };
+  const [waiters, setWaiters] = useState<WaiterRow[]>([]);
+  const [newWaiterName, setNewWaiterName] = useState("");
+  const [newWaiterPin, setNewWaiterPin] = useState("");
+  const [addingWaiter, setAddingWaiter] = useState(false);
+  const [waiterPinEdit, setWaiterPinEdit] = useState<{ id: string; pin: string } | null>(null);
+  const [savingWaiterPinEdit, setSavingWaiterPinEdit] = useState(false);
+  const [showWaiterPin, setShowWaiterPin] = useState<string | null>(null);
 
   // Splash settings
   const getSplashFn = useServerFn(getSplashSettings);
@@ -321,6 +375,108 @@ function Page() {
     } catch {
       // ignore
     }
+  }
+
+  async function refreshIndividualChefs() {
+    try {
+      const headers = await getServerAuthHeaders();
+      const res = await listIndividualChefsFn({ headers });
+      setIndividualChefs(res.chefs as IndividualChef[]);
+    } catch { /* ignore */ }
+  }
+
+  async function refreshWaiters() {
+    try {
+      const headers = await getServerAuthHeaders();
+      const res = await listWaitersFn({ headers });
+      setWaiters(res.waiters as WaiterRow[]);
+    } catch { /* ignore */ }
+  }
+
+  async function onAddIndividualChef() {
+    if (!newChefName.trim()) { toast.error("اكتب اسم الطاهي"); return; }
+    if (newChefPin.length < 4) { toast.error("PIN من 4 إلى 6 أرقام"); return; }
+    setAddingChef(true);
+    try {
+      const headers = await getServerAuthHeaders();
+      await addIndividualChefFn({ data: { name: newChefName.trim(), pin: newChefPin }, headers });
+      setNewChefName(""); setNewChefPin("");
+      await refreshIndividualChefs();
+      toast.success("تم إضافة الطاهي");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+    finally { setAddingChef(false); }
+  }
+
+  async function onSaveChefPinEdit() {
+    if (!chefPinEdit || chefPinEdit.pin.length < 4) { toast.error("PIN من 4 إلى 6 أرقام"); return; }
+    setSavingChefPinEdit(true);
+    try {
+      const headers = await getServerAuthHeaders();
+      await updateIndividualChefPinFn({ data: { chefId: chefPinEdit.id, pin: chefPinEdit.pin }, headers });
+      setChefPinEdit(null);
+      toast.success("تم تحديث الرمز");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+    finally { setSavingChefPinEdit(false); }
+  }
+
+  async function onToggleIndividualChef(chefId: string, is_active: boolean) {
+    try {
+      const headers = await getServerAuthHeaders();
+      await toggleIndividualChefFn({ data: { chefId, is_active }, headers });
+      setIndividualChefs((prev) => prev.map((c) => c.id === chefId ? { ...c, is_active } : c));
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+  }
+
+  async function onDeleteIndividualChef(chefId: string) {
+    try {
+      const headers = await getServerAuthHeaders();
+      await deleteIndividualChefFn({ data: { chefId }, headers });
+      setIndividualChefs((prev) => prev.filter((c) => c.id !== chefId));
+      toast.success("تم الحذف");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+  }
+
+  async function onAddWaiter() {
+    if (!newWaiterName.trim()) { toast.error("اكتب اسم الويتر"); return; }
+    if (newWaiterPin.length < 4) { toast.error("PIN من 4 إلى 6 أرقام"); return; }
+    setAddingWaiter(true);
+    try {
+      const headers = await getServerAuthHeaders();
+      await addWaiterFn({ data: { name: newWaiterName.trim(), pin: newWaiterPin }, headers });
+      setNewWaiterName(""); setNewWaiterPin("");
+      await refreshWaiters();
+      toast.success("تم إضافة الويتر");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+    finally { setAddingWaiter(false); }
+  }
+
+  async function onSaveWaiterPinEdit() {
+    if (!waiterPinEdit || waiterPinEdit.pin.length < 4) { toast.error("PIN من 4 إلى 6 أرقام"); return; }
+    setSavingWaiterPinEdit(true);
+    try {
+      const headers = await getServerAuthHeaders();
+      await updateWaiterPinFn({ data: { waiterId: waiterPinEdit.id, pin: waiterPinEdit.pin }, headers });
+      setWaiterPinEdit(null);
+      toast.success("تم تحديث الرمز");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+    finally { setSavingWaiterPinEdit(false); }
+  }
+
+  async function onToggleWaiter(waiterId: string, is_active: boolean) {
+    try {
+      const headers = await getServerAuthHeaders();
+      await toggleWaiterFn({ data: { waiterId, is_active }, headers });
+      setWaiters((prev) => prev.map((w) => w.id === waiterId ? { ...w, is_active } : w));
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
+  }
+
+  async function onDeleteWaiter(waiterId: string) {
+    try {
+      const headers = await getServerAuthHeaders();
+      await deleteWaiterFn({ data: { waiterId }, headers });
+      setWaiters((prev) => prev.filter((w) => w.id !== waiterId));
+      toast.success("تم الحذف");
+    } catch (e) { toast.error((e as Error).message || "فشل"); }
   }
 
   async function onAddDriver() {
@@ -490,6 +646,8 @@ function Page() {
         // ignore
       }
       void refreshDrivers();
+      void refreshIndividualChefs();
+      void refreshWaiters();
       setLoading(false);
       } catch (e) {
         toast.error((e as Error).message || "فشل تحميل الإعدادات");
@@ -847,7 +1005,7 @@ function Page() {
       const { error } = await supabase.from("staff_invitations").insert({
         restaurant_id: r.id,
         email,
-        role: "staff",
+        role: inviteRole,
         invited_by: u.user.id,
       });
       if (error) throw new Error(error.message);
@@ -1680,6 +1838,188 @@ function Page() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── Individual Chef Accounts ─────────────────────────────── */}
+      <div className="rounded-2xl bg-background border p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <ChefHat className="w-5 h-5 text-orange-500" />
+          <h3 className="text-lg font-bold">حسابات الطهاة الفردية</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          كل طاهي بحسابه الخاص — يسجّل دخوله بـ PIN ويرى أوامر المطبخ. تتبع إنتاجية كل واحد.
+        </p>
+
+        <div className="flex gap-2 flex-wrap">
+          <Input
+            placeholder="اسم الطاهي"
+            value={newChefName}
+            onChange={(e) => setNewChefName(e.target.value)}
+            className="flex-1 min-w-0"
+          />
+          <Input
+            type="text"
+            inputMode="numeric"
+            placeholder="PIN (4–6 أرقام)"
+            maxLength={6}
+            value={newChefPin}
+            onChange={(e) => setNewChefPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="w-36 text-center font-mono tracking-widest"
+          />
+          <Button onClick={onAddIndividualChef} disabled={addingChef}>
+            {addingChef ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlusIcon className="w-4 h-4" />}
+            <span className="mr-1">إضافة</span>
+          </Button>
+        </div>
+
+        {individualChefs.length > 0 && (
+          <div className="space-y-2">
+            {individualChefs.map((chef) => (
+              <div key={chef.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChefHat className="w-4 h-4 text-orange-400 shrink-0" />
+                  <span className="font-medium truncate">{chef.name}</span>
+                  {!chef.is_active && <span className="text-xs text-muted-foreground">(موقوف)</span>}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {chefPinEdit?.id === chef.id ? (
+                    <>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={chefPinEdit.pin}
+                        onChange={(e) => setChefPinEdit({ ...chefPinEdit, pin: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                        className="w-28 text-center font-mono h-8 text-sm"
+                        placeholder="PIN جديد"
+                        autoFocus
+                      />
+                      <Button size="sm" onClick={onSaveChefPinEdit} disabled={savingChefPinEdit}>
+                        {savingChefPinEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setChefPinEdit(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={() => setChefPinEdit({ id: chef.id, pin: "" })} title="تغيير PIN">
+                      <KeyRound className="w-3 h-3" />
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onToggleIndividualChef(chef.id, !chef.is_active)}
+                    title={chef.is_active ? "تعطيل" : "تفعيل"}
+                  >
+                    <Power className={`w-3 h-3 ${chef.is_active ? "text-green-600" : "text-muted-foreground"}`} />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => onDeleteIndividualChef(chef.id)} className="text-red-500 hover:text-red-700">
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {r && (
+          <p className="text-xs text-muted-foreground">
+            رابط دخول المطبخ الفردي:{" "}
+            <span className="font-mono">{`${window.location.origin}/kitchen-login?rid=${r.id}&mode=individual`}</span>
+          </p>
+        )}
+      </div>
+
+      {/* ─── Individual Waiter Accounts ───────────────────────────── */}
+      <div className="rounded-2xl bg-background border p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <UtensilsCrossed className="w-5 h-5 text-blue-500" />
+          <h3 className="text-lg font-bold">حسابات الويترات</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          كل ويتر بحسابه الخاص — يرى الطلبات الجاهزة ويعلّم الطلب كمُسلَّم. تتبع أداء كل واحد.
+        </p>
+
+        <div className="flex gap-2 flex-wrap">
+          <Input
+            placeholder="اسم الويتر"
+            value={newWaiterName}
+            onChange={(e) => setNewWaiterName(e.target.value)}
+            className="flex-1 min-w-0"
+          />
+          <Input
+            type="text"
+            inputMode="numeric"
+            placeholder="PIN (4–6 أرقام)"
+            maxLength={6}
+            value={newWaiterPin}
+            onChange={(e) => setNewWaiterPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="w-36 text-center font-mono tracking-widest"
+          />
+          <Button onClick={onAddWaiter} disabled={addingWaiter}>
+            {addingWaiter ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlusIcon className="w-4 h-4" />}
+            <span className="mr-1">إضافة</span>
+          </Button>
+        </div>
+
+        {waiters.length > 0 && (
+          <div className="space-y-2">
+            {waiters.map((w) => (
+              <div key={w.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <UtensilsCrossed className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span className="font-medium truncate">{w.name}</span>
+                  {!w.is_active && <span className="text-xs text-muted-foreground">(موقوف)</span>}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {waiterPinEdit?.id === w.id ? (
+                    <>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={waiterPinEdit.pin}
+                        onChange={(e) => setWaiterPinEdit({ ...waiterPinEdit, pin: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+                        className="w-28 text-center font-mono h-8 text-sm"
+                        placeholder="PIN جديد"
+                        autoFocus
+                      />
+                      <Button size="sm" onClick={onSaveWaiterPinEdit} disabled={savingWaiterPinEdit}>
+                        {savingWaiterPinEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setWaiterPinEdit(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={() => setWaiterPinEdit({ id: w.id, pin: "" })} title="تغيير PIN">
+                      <KeyRound className="w-3 h-3" />
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onToggleWaiter(w.id, !w.is_active)}
+                    title={w.is_active ? "تعطيل" : "تفعيل"}
+                  >
+                    <Power className={`w-3 h-3 ${w.is_active ? "text-green-600" : "text-muted-foreground"}`} />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => onDeleteWaiter(w.id)} className="text-red-500 hover:text-red-700">
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {r && (
+          <p className="text-xs text-muted-foreground">
+            رابط دخول الويتر:{" "}
+            <span className="font-mono">{`${window.location.origin}/waiter-login?rid=${r.id}`}</span>
+          </p>
+        )}
+      </div>
+
       <div className="rounded-2xl bg-background border p-6 space-y-4">
         <div className="flex items-center gap-2">
           <ShoppingBag className="w-5 h-5 text-primary" />
@@ -2407,24 +2747,42 @@ function Page() {
       <div className="rounded-2xl bg-background border p-6 space-y-4">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
-          <h3 className="text-lg font-bold">إدارة الفريق</h3>
+          <h3 className="text-lg font-bold">إدارة الفريق (مديرون)</h3>
         </div>
         <p className="text-sm text-muted-foreground">
-          ادعُ موظفين للوصول إلى الطلبات والمنيو فقط
+          ادعُ مديرين عبر الإيميل — كل دور يرى فقط ما يخصه في لوحة التحكم
         </p>
 
-        <div className="flex gap-2">
-          <Input
-            type="email"
-            placeholder="staff@example.com"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            dir="ltr"
-          />
-          <Button onClick={onInvite} disabled={inviting}>
-            {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-            <span className="hidden sm:inline mr-2">دعوة</span>
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              placeholder="manager@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              dir="ltr"
+              className="flex-1"
+            />
+            <Button onClick={onInvite} disabled={inviting}>
+              {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+              <span className="hidden sm:inline mr-2">دعوة</span>
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {(Object.entries(MANAGER_ROLE_LABELS) as [ManagerRole, string][]).map(([role, label]) => (
+              <button
+                key={role}
+                onClick={() => setInviteRole(role)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  inviteRole === role
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/40 text-muted-foreground border-transparent hover:border-primary/30"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {invites.length > 0 && (
@@ -2436,6 +2794,9 @@ function Page() {
                   <span className="flex items-center gap-2 text-sm">
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <span dir="ltr">{inv.email}</span>
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      {MANAGER_ROLE_LABELS[inv.role] ?? inv.role}
+                    </span>
                   </span>
                   <button
                     onClick={() => onCancelInvite(inv.id)}
@@ -2459,7 +2820,7 @@ function Page() {
                   <span className="text-sm font-mono" dir="ltr">{s.user_id.slice(0, 8)}…</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {s.role === "admin" ? "مالك" : "موظف"}
+                      {s.role === "admin" ? "مالك" : (MANAGER_ROLE_LABELS[s.role] ?? s.role)}
                     </span>
                     <button
                       onClick={() => onRemoveStaff(s.id)}

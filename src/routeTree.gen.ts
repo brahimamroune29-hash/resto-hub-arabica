@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WaiterScreenRouteImport } from './routes/waiter-screen'
+import { Route as WaiterLoginRouteImport } from './routes/waiter-login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -52,6 +54,16 @@ import { Route as ApiPublicHooksDailySummaryRouteImport } from './routes/api/pub
 import { Route as ApiPublicTelegramWebhookRidRouteImport } from './routes/api/public/telegram/webhook.$rid'
 import { Route as ApiPublicTelegramSummaryWebhookRidRouteImport } from './routes/api/public/telegram/summary-webhook.$rid'
 
+const WaiterScreenRoute = WaiterScreenRouteImport.update({
+  id: '/waiter-screen',
+  path: '/waiter-screen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WaiterLoginRoute = WaiterLoginRouteImport.update({
+  id: '/waiter-login',
+  path: '/waiter-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -282,6 +294,8 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/waiter-login': typeof WaiterLoginRoute
+  '/waiter-screen': typeof WaiterScreenRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -324,6 +338,8 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/waiter-login': typeof WaiterLoginRoute
+  '/waiter-screen': typeof WaiterScreenRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -369,6 +385,8 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/waiter-login': typeof WaiterLoginRoute
+  '/waiter-screen': typeof WaiterScreenRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -415,6 +433,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/signup'
+    | '/waiter-login'
+    | '/waiter-screen'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -457,6 +477,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/signup'
+    | '/waiter-login'
+    | '/waiter-screen'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -501,6 +523,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/setup'
     | '/signup'
+    | '/waiter-login'
+    | '/waiter-screen'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -546,6 +570,8 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SetupRoute: typeof SetupRoute
   SignupRoute: typeof SignupRoute
+  WaiterLoginRoute: typeof WaiterLoginRoute
+  WaiterScreenRoute: typeof WaiterScreenRoute
   DDelivery_tokenRoute: typeof DDelivery_tokenRoute
   RQr_tokenRoute: typeof RQr_tokenRoute
   TTakeaway_tokenRoute: typeof TTakeaway_tokenRoute
@@ -560,6 +586,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/waiter-screen': {
+      id: '/waiter-screen'
+      path: '/waiter-screen'
+      fullPath: '/waiter-screen'
+      preLoaderRoute: typeof WaiterScreenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/waiter-login': {
+      id: '/waiter-login'
+      path: '/waiter-login'
+      fullPath: '/waiter-login'
+      preLoaderRoute: typeof WaiterLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -940,6 +980,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SetupRoute: SetupRoute,
   SignupRoute: SignupRoute,
+  WaiterLoginRoute: WaiterLoginRoute,
+  WaiterScreenRoute: WaiterScreenRoute,
   DDelivery_tokenRoute: DDelivery_tokenRoute,
   RQr_tokenRoute: RQr_tokenRoute,
   TTakeaway_tokenRoute: TTakeaway_tokenRoute,

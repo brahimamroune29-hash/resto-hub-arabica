@@ -15,6 +15,7 @@ import {
   MessageSquareWarning,
   ClipboardCheck,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { requireAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminChatBot } from "@/components/AdminChatBot";
@@ -45,27 +46,56 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  roles?: string[]; // which roles can see this item (undefined = all)
 };
 
-const NAV: NavItem[] = [
+const ALL_NAV: NavItem[] = [
   { to: "/ops", label: tx("نظرة عامة"), icon: LayoutDashboard, exact: true },
-  { to: "/ops/inventory", label: tx("المخزون"), icon: Package },
-  { to: "/ops/inventory-count", label: tx("جرد المخزون"), icon: ClipboardCheck },
-  { to: "/ops/recipes", label: tx("الوصفات"), icon: ChefHat },
-  { to: "/ops/suppliers", label: tx("الموردين"), icon: Truck },
-  { to: "/ops/employees", label: tx("الموظفين"), icon: Users },
-  { to: "/ops/staff-performance", label: tx("أداء الموظفين"), icon: TrendingUp },
-  { to: "/ops/customers", label: tx("العملاء والولاء"), icon: Heart },
-  { to: "/ops/expenses", label: tx("المصاريف"), icon: Wallet },
-  { to: "/ops/waste", label: tx("سجل الهدر"), icon: Trash2 },
-  { to: "/ops/complaints", label: tx("الشكاوى"), icon: MessageSquareWarning },
-  { to: "/ops/reports", label: tx("التقارير"), icon: BarChart3 },
+  { to: "/ops/inventory", label: tx("المخزون"), icon: Package, roles: ["admin", "operations_manager", "production_manager", "purchasing_manager"] },
+  { to: "/ops/inventory-count", label: tx("جرد المخزون"), icon: ClipboardCheck, roles: ["admin", "operations_manager", "production_manager", "purchasing_manager"] },
+  { to: "/ops/recipes", label: tx("الوصفات"), icon: ChefHat, roles: ["admin", "operations_manager", "production_manager"] },
+  { to: "/ops/suppliers", label: tx("الموردين"), icon: Truck, roles: ["admin", "operations_manager", "purchasing_manager"] },
+  { to: "/ops/employees", label: tx("الموظفين"), icon: Users, roles: ["admin", "hr_manager", "operations_manager"] },
+  { to: "/ops/staff-performance", label: tx("أداء الموظفين"), icon: TrendingUp, roles: ["admin", "hr_manager", "operations_manager", "production_manager"] },
+  { to: "/ops/customers", label: tx("العملاء والولاء"), icon: Heart, roles: ["admin", "operations_manager"] },
+  { to: "/ops/expenses", label: tx("المصاريف"), icon: Wallet, roles: ["admin", "operations_manager", "purchasing_manager"] },
+  { to: "/ops/waste", label: tx("سجل الهدر"), icon: Trash2, roles: ["admin", "operations_manager", "production_manager"] },
+  { to: "/ops/complaints", label: tx("الشكاوى"), icon: MessageSquareWarning, roles: ["admin", "operations_manager"] },
+  { to: "/ops/reports", label: tx("التقارير"), icon: BarChart3, roles: ["admin", "operations_manager", "hr_manager"] },
 ];
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "مالك",
+  staff: "موظف",
+  production_manager: "مسؤول الإنتاج",
+  operations_manager: "مسؤول التشغيل",
+  hr_manager: "مسؤول الموارد البشرية",
+  purchasing_manager: "مسؤول المشتريات",
+};
 
 function OpsLayout() {
   useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const [userRole, setUserRole] = useState<string>("admin");
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (data?.role) setUserRole(data.role);
+      else setUserRole("admin"); // owner has full access
+    })();
+  }, []);
+
+  const NAV = ALL_NAV.filter(
+    (item) => !item.roles || item.roles.includes(userRole),
+  );
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(to + "/");
@@ -87,7 +117,9 @@ function OpsLayout() {
           </div>
           <div className="leading-tight hidden lg:block min-w-0">
             <div className="font-bold text-sm truncate text-foreground">{tx("إدارة العمليات")}</div>
-            <div className="text-[11px] font-medium text-muted-foreground">Ops</div>
+            <div className="text-[11px] font-medium text-muted-foreground">
+              {ROLE_LABELS[userRole] ?? "Ops"}
+            </div>
           </div>
         </div>
 
@@ -113,13 +145,15 @@ function OpsLayout() {
         </nav>
 
         <div className="p-3 border-t border-border/60 space-y-1.5">
-          <Link
-            to="/dashboard"
-            className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground font-medium hover:bg-muted hover:text-foreground transition lg:justify-start justify-center"
-          >
-            <ArrowRight className="w-[18px] h-[18px] shrink-0" />
-            <span className="hidden lg:inline">{tx("لوحة التحكم")}</span>
-          </Link>
+          {userRole === "admin" && (
+            <Link
+              to="/dashboard"
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground font-medium hover:bg-muted hover:text-foreground transition lg:justify-start justify-center"
+            >
+              <ArrowRight className="w-[18px] h-[18px] shrink-0" />
+              <span className="hidden lg:inline">{tx("لوحة التحكم")}</span>
+            </Link>
+          )}
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground font-medium hover:bg-muted hover:text-foreground transition lg:justify-start justify-center"
@@ -135,16 +169,20 @@ function OpsLayout() {
         <header className="h-[72px] glass shadow-glass md:rounded-2xl flex items-center justify-between px-4 md:px-6 sticky top-0 md:top-5 z-30">
           <div className="min-w-0">
             <h2 className="font-bold text-lg md:text-xl text-foreground truncate tracking-tight">
-              {current.label}
+              {current?.label ?? tx("إدارة العمليات")}
             </h2>
-            <p className="text-xs text-muted-foreground truncate">{tx("إدارة العمليات اليومية")}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {ROLE_LABELS[userRole] ?? tx("إدارة العمليات اليومية")}
+            </p>
           </div>
-          <Link
-            to="/dashboard"
-            className="md:hidden text-xs text-muted-foreground hover:text-foreground"
-          >
-            {tx("لوحة التحكم")}
-          </Link>
+          {userRole === "admin" && (
+            <Link
+              to="/dashboard"
+              className="md:hidden text-xs text-muted-foreground hover:text-foreground"
+            >
+              {tx("لوحة التحكم")}
+            </Link>
+          )}
         </header>
 
         <main className="flex-1 px-4 md:px-2 pb-24 md:pb-2">
