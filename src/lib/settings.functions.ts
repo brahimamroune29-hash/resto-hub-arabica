@@ -302,3 +302,182 @@ export const updateSplashSettings = createServerFn({ method: "POST" })
       cover_video_url: coverVideoUrl,
     };
   });
+
+// ─── Staff account creation (no email required) ──────────────────────────
+
+const VALID_MANAGER_ROLES = [
+  "staff",
+  "production_manager",
+  "operations_manager",
+  "hr_manager",
+  "purchasing_manager",
+] as const;
+
+export const createStaffAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        email: z.string().email(),
+        password: z.string().min(6, "كلمة السر 6 أحرف على الأقل"),
+        role: z.enum(VALID_MANAGER_ROLES),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Get owner's restaurant
+    const { data: r } = await supabase
+      .from("restaurants")
+      .select("id, name")
+      .eq("owner_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!r) throw new Error("لا يوجد مطعم");
+
+    const email = data.email.trim().toLowerCase();
+
+    // Create the user directly — no email confirmation needed
+    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: data.password,
+      email_confirm: true,
+      user_metadata: {
+        restaurant_id: r.id,
+        restaurant_name: r.name,
+        staff_role: data.role,
+      },
+    });
+
+    let newUserId: string;
+
+    if (createErr) {
+      const msg = createErr.message.toLowerCase();
+      if (!msg.includes("already") && !msg.includes("exists") && !msg.includes("registered")) {
+        throw new Error(createErr.message);
+      }
+      // User exists (ghost from old invite or real) — find them and update password
+      const { data: { users } } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const existing = users.find((u) => u.email?.toLowerCase() === email);
+      if (!existing) throw new Error("هذا البريد مسجّل بالفعل في نظام آخر — جرّب بريداً آخر");
+      await supabaseAdmin.auth.admin.updateUserById(existing.id, {
+        password: data.password,
+        email_confirm: true,
+      });
+      newUserId = existing.id;
+    } else {
+      newUserId = created!.user.id;
+    }
+
+    // Assign role in user_roles
+    const { error: roleErr } = await supabaseAdmin
+      .from("user_roles")
+      .upsert(
+        { user_id: newUserId, role: data.role, restaurant_id: r.id },
+        { onConflict: "user_id,restaurant_id" },
+      );
+    if (roleErr) throw new Error("تم إنشاء الحساب لكن فشل تعيين الدور");
+
+    return { ok: true, userId: newUserId, email };
+  });
+
+export const deleteStaffAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ staffUserId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Verify the staff belongs to this owner's restaurant
+    const { data: r } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!r) throw new Error("لا يوجد مطعم");
+
+    const { data: role } = await supabaseAdmin
+      .from("user_roles")
+      .select("id")
+      .eq("user_id", data.staffUserId)
+      .eq("restaurant_id", r.id)
+      .maybeSingle();
+    if (!role) throw new Error("المستخدم غير موجود");
+
+    // Delete role then auth user
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.staffUserId);
+    await supabaseAdmin.auth.admin.deleteUser(data.staffUserId);
+
+    return { ok: true };
+  });
+
+export const listStaffAccounts = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    const { data: r } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!r) return { staff: [] as { id: string; user_id: string; role: string; email: string }[] };
+
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles")
+      .select("id, user_id, role")
+      .eq("restaurant_id", r.id)
+      .neq("role", "admin");
+
+    if (!roles || roles.length === 0) return { staff: [] as { id: string; user_id: string; role: string; email: string }[] };
+
+    const staff = await Promise.all(
+      (roles as { id: string; user_id: string; role: string }[]).map(async (row) => {
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(row.user_id);
+        return {
+          id: row.id,
+          user_id: row.user_id,
+          role: row.role,
+          email: user?.email ?? "—",
+        };
+      }),
+    );
+
+    return { staff };
+  });
+
+export const updateStaffPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ staffUserId: z.string().uuid(), newPassword: z.string().min(6) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+
+    // Verify ownership
+    const { data: r } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!r) throw new Error("لا يوجد مطعم");
+
+    const { data: role } = await supabaseAdmin
+      .from("user_roles")
+      .select("id")
+      .eq("user_id", data.staffUserId)
+      .eq("restaurant_id", r.id)
+      .maybeSingle();
+    if (!role) throw new Error("المستخدم غير موجود");
+
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.staffUserId, {
+      password: data.newPassword,
+    });
+    if (error) throw new Error(error.message);
+
+    return { ok: true };
+  });

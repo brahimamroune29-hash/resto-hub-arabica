@@ -61,45 +61,30 @@ export function translateAuthError(message: string): string {
 }
 
 /** Decide where to send a freshly-authenticated user. */
-export async function getPostAuthRedirect(userId: string): Promise<"/setup" | "/dashboard"> {
-  // First, auto-accept any pending staff invitations for this user's email
-  try {
-    const { data: u } = await supabase.auth.getUser();
-    const email = u.user?.email?.toLowerCase();
-    if (email) {
-      const { data: pending } = await supabase
-        .from("staff_invitations")
-        .select("id, restaurant_id, role")
-        .eq("email", email)
-        .eq("accepted", false);
-      if (pending && pending.length) {
-        for (const inv of pending) {
-          await supabase.from("user_roles").insert({
-            user_id: userId,
-            restaurant_id: inv.restaurant_id,
-            role: inv.role,
-          });
-          await supabase.from("staff_invitations").update({ accepted: true }).eq("id", inv.id);
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  const { data } = await supabase
+export async function getPostAuthRedirect(userId: string): Promise<"/setup" | "/dashboard" | "/ops"> {
+  // Check if user owns a restaurant
+  const { data: restaurants } = await supabase
     .from("restaurants")
     .select("setup_completed")
     .eq("owner_id", userId)
     .limit(1);
-  if (data && data.length > 0 && data[0].setup_completed) return "/dashboard";
-  // If user has no restaurant of their own, but is staff somewhere → dashboard
+
+  if (restaurants && restaurants.length > 0) {
+    return restaurants[0].setup_completed ? "/dashboard" : "/setup";
+  }
+
+  // Not an owner — check if they are a staff member
   const { data: roles } = await supabase
     .from("user_roles")
-    .select("id")
+    .select("role")
     .eq("user_id", userId)
     .limit(1);
-  if (roles && roles.length) return "/dashboard";
+
+  if (roles && roles.length > 0) {
+    // Staff members go to ops panel
+    return "/ops";
+  }
+
   return "/setup";
 }
 
@@ -121,6 +106,6 @@ export async function redirectIfAuthed() {
   const session = await waitForAuthSession(getAuthSessionWaitMs());
   if (session) {
     const to = await getPostAuthRedirect(session.user.id);
-    throw redirect({ to });
+    throw redirect({ to } as { to: "/setup" | "/dashboard" | "/ops" });
   }
 }

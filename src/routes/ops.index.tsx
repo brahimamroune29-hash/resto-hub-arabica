@@ -24,9 +24,35 @@ function fmt(n: number) {
   return new Intl.NumberFormat("ar-DZ", { maximumFractionDigits: 2 }).format(n);
 }
 
+async function resolveRestaurantId(userId: string): Promise<string | null> {
+  // Check if user is the owner first
+  const { data: owned } = await supabase
+    .from("restaurants")
+    .select("id")
+    .eq("owner_id", userId)
+    .limit(1);
+  if (owned && owned.length > 0) return owned[0].id;
+
+  // Fallback: user is staff — look up via user_roles
+  const { data: roles } = await supabase
+    .from("user_roles")
+    .select("restaurant_id, role")
+    .eq("user_id", userId)
+    .limit(1);
+  return roles?.[0]?.restaurant_id ?? null;
+}
+
+// KPIs that should be hidden for specific roles
+const HIDDEN_KPIS: Record<string, string[]> = {
+  production_manager: ["إيرادات هذا الشهر", "صافي الربح", "مصاريف هذا الشهر", "رواتب معلقة"],
+  purchasing_manager: ["إيرادات هذا الشهر", "صافي الربح", "رواتب معلقة"],
+  hr_manager: ["إيرادات هذا الشهر", "صافي الربح", "مصاريف هذا الشهر"],
+};
+
 function OpsOverview() {
   useTranslation();
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string>("admin");
   const [kpis, setKpis] = useState<Kpis>({
     monthExpenses: 0,
     lowStock: 0,
@@ -39,17 +65,19 @@ function OpsOverview() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u.user) return;
-      const { data: r } = await supabase
-        .from("restaurants")
-        .select("id")
-        .eq("owner_id", u.user.id)
+      if (!u.user) { setLoading(false); return; }
+
+      // Fetch role
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", u.user.id)
         .maybeSingle();
-      if (!r) {
-        setLoading(false);
-        return;
-      }
-      const rid = r.id;
+      const role = roleRow?.role ?? "admin";
+      setUserRole(role);
+
+      const rid = await resolveRestaurantId(u.user.id);
+      if (!rid) { setLoading(false); return; }
 
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -125,17 +153,19 @@ function OpsOverview() {
     })();
   }, []);
 
-  const items = [
+  const allItems = [
     {
+      key: "إيرادات هذا الشهر",
       label: tx("إيرادات هذا الشهر"),
-      value: (fmt(kpis.monthRevenue)) + tx(" دج"),
+      value: fmt(kpis.monthRevenue) + tx(" دج"),
       hint: tx("طلبات مدفوعة"),
       icon: TrendingUp,
       tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     },
     {
+      key: "صافي الربح",
       label: tx("صافي الربح"),
-      value: (fmt(kpis.monthNet)) + tx(" دج"),
+      value: fmt(kpis.monthNet) + tx(" دج"),
       hint: tx("إيرادات − (مشتريات + رواتب + هدر)"),
       icon: PiggyBank,
       tone:
@@ -144,13 +174,15 @@ function OpsOverview() {
           : "bg-destructive/10 text-destructive",
     },
     {
+      key: "مصاريف هذا الشهر",
       label: tx("مصاريف هذا الشهر"),
-      value: (fmt(kpis.monthExpenses)) + tx(" دج"),
+      value: fmt(kpis.monthExpenses) + tx(" دج"),
       hint: tx("مشتريات + رواتب"),
       icon: Wallet,
       tone: "bg-primary/10 text-primary",
     },
     {
+      key: "مكونات ناقصة",
       label: tx("مكونات ناقصة"),
       value: `${kpis.lowStock}`,
       hint: tx("أقل من حد التنبيه"),
@@ -158,6 +190,7 @@ function OpsOverview() {
       tone: "bg-destructive/10 text-destructive",
     },
     {
+      key: "رواتب معلقة",
       label: tx("رواتب معلقة"),
       value: `${kpis.pendingSalaries}`,
       hint: tx("موظفين لم يُدفعوا هذا الشهر"),
@@ -165,20 +198,24 @@ function OpsOverview() {
       tone: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
     },
     {
+      key: "تكلفة الهدر هذا الأسبوع",
       label: tx("تكلفة الهدر هذا الأسبوع"),
-      value: (fmt(kpis.weekWaste)) + tx(" دج"),
+      value: fmt(kpis.weekWaste) + tx(" دج"),
       hint: tx("آخر 7 أيام"),
       icon: Trash2,
       tone: "bg-muted text-foreground",
     },
   ];
 
+  const hiddenKeys = HIDDEN_KPIS[userRole] ?? [];
+  const visibleItems = allItems.filter((it) => !hiddenKeys.includes(it.key));
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-2">
-      {items.map((it) => {
+      {visibleItems.map((it) => {
         const Icon = it.icon;
         return (
-          <Card key={it.label} className="p-5 rounded-2xl glass shadow-glass border-border/60">
+          <Card key={it.key} className="p-5 rounded-2xl glass shadow-glass border-border/60">
             <div className="flex items-center justify-between mb-4">
               <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${it.tone}`}>
                 <Icon className="w-5 h-5" />

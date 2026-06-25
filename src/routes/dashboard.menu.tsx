@@ -186,9 +186,16 @@ function MenuPage() {
   const confirmDeleteCat = async () => {
     if (!catDelete || !restaurantId) return;
     try {
+      // Delete all items belonging to this category first (DB has no CASCADE on category_id)
+      const { error: itemsErr } = await supabase
+        .from("menu_items")
+        .delete()
+        .eq("category_id", catDelete.id);
+      if (itemsErr) throw itemsErr;
+
       const { error } = await supabase.from("categories").delete().eq("id", catDelete.id);
       if (error) throw error;
-      toast.success("تم حذف الفئة");
+      toast.success("تم حذف الفئة وأصنافها");
       setCatDelete(null);
       await reload(restaurantId);
     } catch {
@@ -577,7 +584,7 @@ function MenuPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>حذف الفئة؟</AlertDialogTitle>
             <AlertDialogDescription>
-              سيتم حذف الفئة. الأصناف التابعة لها ستبقى لكن بدون فئة.
+              سيتم حذف الفئة وجميع الأصناف التابعة لها نهائياً. هذا الإجراء لا يمكن التراجع عنه.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

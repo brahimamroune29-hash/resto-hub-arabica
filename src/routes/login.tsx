@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { AuthShell } from "@/components/AuthShell";
 import { getPostAuthRedirect, redirectIfAuthed, translateAuthError } from "@/lib/auth";
+import { checkRateLimit, clearRateLimit, recordFailedAttempt } from "@/lib/rate-limiter";
 import { useTranslation } from "react-i18next";
 
 export const Route = createFileRoute("/login")({
@@ -22,16 +22,38 @@ function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("البريد الإلكتروني غير صالح");
+      return;
+    }
+    if (password.length < 6) {
+      setError("كلمة المرور قصيرة جداً (6 أحرف على الأقل)");
+      return;
+    }
+
+    const { allowed, waitSeconds } = checkRateLimit(`login:${trimmedEmail}`);
+    if (!allowed) {
+      setError(`محاولات كثيرة جداً، حاول مجدداً بعد ${waitSeconds} ثانية`);
+      return;
+    }
+
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
       if (error || !data.session) {
+        recordFailedAttempt(`login:${trimmedEmail}`);
         setError(translateAuthError(error?.message ?? "invalid login"));
         return;
       }
+      clearRateLimit(`login:${trimmedEmail}`);
       const to = await getPostAuthRedirect(data.session.user.id);
       navigate({ to });
-      } catch {
+    } catch {
       setError(t("common.error"));
     } finally {
       setLoading(false);
@@ -42,19 +64,12 @@ function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/login`,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
-      if (result.error) {
-        setError(translateAuthError((result.error as Error).message ?? "google"));
-        return;
-      }
-      if (result.redirected) return;
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        const to = await getPostAuthRedirect(data.session.user.id);
-        navigate({ to });
-      }
+      if (error) setError(translateAuthError(error.message ?? "google"));
+      // browser redirects to Google then back — session handled by redirectIfAuthed
     } catch {
       setError(t("common.error"));
     } finally {
@@ -141,19 +156,11 @@ function LoginPage() {
             setError(null);
             setLoading(true);
             try {
-              const result = await lovable.auth.signInWithOAuth("apple", {
-                redirect_uri: `${window.location.origin}/login`,
+              const { error } = await supabase.auth.signInWithOAuth({
+                provider: "apple",
+                options: { redirectTo: `${window.location.origin}/auth/callback` },
               });
-              if (result.error) {
-                setError(translateAuthError((result.error as Error).message ?? "apple"));
-                return;
-              }
-              if (result.redirected) return;
-              const { data } = await supabase.auth.getSession();
-              if (data.session) {
-                const to = await getPostAuthRedirect(data.session.user.id);
-                navigate({ to });
-              }
+              if (error) setError(translateAuthError(error.message ?? "apple"));
             } catch {
               setError(t("common.error"));
             } finally {

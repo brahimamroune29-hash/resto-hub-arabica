@@ -31,7 +31,7 @@ import {
   toggleWaiter,
   deleteWaiter,
 } from "@/lib/waiter.functions";
-import { updateRestaurantSettings, updateMenuTheme, getSplashSettings, updateSplashSettings } from "@/lib/settings.functions";
+import { updateRestaurantSettings, updateMenuTheme, getSplashSettings, updateSplashSettings, createStaffAccount, deleteStaffAccount, updateStaffPassword, listStaffAccounts } from "@/lib/settings.functions";
 import {
   getDeliveryStatus,
   enableDelivery,
@@ -93,8 +93,7 @@ type Restaurant = {
 };
 
 type ManagerRole = "staff" | "production_manager" | "operations_manager" | "hr_manager" | "purchasing_manager";
-type StaffMember = { id: string; user_id: string; role: ManagerRole; email?: string };
-type Invitation = { id: string; email: string; role: ManagerRole; created_at: string };
+type StaffMember = { id: string; user_id: string; role: string; email: string };
 
 const MANAGER_ROLE_LABELS: Record<ManagerRole, string> = {
   staff: "موظف (وصول محدود)",
@@ -118,10 +117,14 @@ function Page() {
   const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [invites, setInvites] = useState<Invitation[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
   const [inviteRole, setInviteRole] = useState<ManagerRole>("staff");
   const [inviting, setInviting] = useState(false);
+  const [staffPwEdit, setStaffPwEdit] = useState<{ userId: string; email: string } | null>(null);
+  const [staffNewPw, setStaffNewPw] = useState("");
+  const [savingStaffPw, setSavingStaffPw] = useState(false);
   // Cashier
   const setPin = useServerFn(setCashierPin);
   const disable = useServerFn(disableCashier);
@@ -140,6 +143,10 @@ function Page() {
   const [savingChefPin, setSavingChefPin] = useState(false);
   const [showChefPinDialog, setShowChefPinDialog] = useState<string | null>(null);
   const [confirmDisableChef, setConfirmDisableChef] = useState(false);
+  const createStaffFn = useServerFn(createStaffAccount);
+  const deleteStaffFn = useServerFn(deleteStaffAccount);
+  const updateStaffPwFn = useServerFn(updateStaffPassword);
+  const listStaffFn = useServerFn(listStaffAccounts);
   // Menu theme
   const updateThemeFn = useServerFn(updateMenuTheme);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(DEFAULT_MENU_THEME);
@@ -978,66 +985,59 @@ function Page() {
     }
   }
 
-  async function loadTeam(rid: string) {
-    const [{ data: rolesRows }, { data: invRows }] = await Promise.all([
-      supabase.from("user_roles").select("id, user_id, role").eq("restaurant_id", rid),
-      supabase
-        .from("staff_invitations")
-        .select("id, email, role, created_at")
-        .eq("restaurant_id", rid)
-        .eq("accepted", false),
-    ]);
-    setStaff((rolesRows ?? []) as StaffMember[]);
-    setInvites((invRows ?? []) as Invitation[]);
+  async function loadTeam(_rid?: string) {
+    const headers = await getServerAuthHeaders();
+    const res = await listStaffFn({ headers });
+    setStaff(res.staff as StaffMember[]);
   }
 
-  const onInvite = async () => {
+  const onCreateStaff = async () => {
     if (!r) return;
     const email = inviteEmail.trim().toLowerCase();
-    if (!email || !email.includes("@")) {
-      toast.error("البريد غير صالح");
-      return;
-    }
+    if (!email || !email.includes("@")) { toast.error("البريد غير صالح"); return; }
+    if (invitePassword.length < 6) { toast.error("كلمة السر 6 أحرف على الأقل"); return; }
     setInviting(true);
     try {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) throw new Error("غير مسجّل");
-      const { error } = await supabase.from("staff_invitations").insert({
-        restaurant_id: r.id,
-        email,
-        role: inviteRole,
-        invited_by: u.user.id,
-      });
-      if (error) throw new Error(error.message);
-      toast.success(`تم إرسال دعوة إلى ${email}`);
+      const headers = await getServerAuthHeaders();
+      await createStaffFn({ data: { email, password: invitePassword, role: inviteRole }, headers });
+      toast.success(`تم إنشاء حساب ${MANAGER_ROLE_LABELS[inviteRole]} ✅`);
       setInviteEmail("");
-      await loadTeam(r.id);
+      setInvitePassword("");
+      await loadTeam();
     } catch (e) {
-      toast.error((e as Error).message || "فشل الإرسال");
+      toast.error((e as Error).message || "فشل الإنشاء");
     } finally {
       setInviting(false);
     }
   };
 
-  const onCancelInvite = async (id: string) => {
-    if (!r) return;
-    const { error } = await supabase.from("staff_invitations").delete().eq("id", id);
-    if (error) {
-      toast.error("فشل الإلغاء");
-      return;
+  const onRemoveStaff = async (userId: string) => {
+    if (!confirm("هل تريد حذف هذا الحساب نهائياً؟")) return;
+    try {
+      const headers = await getServerAuthHeaders();
+      await deleteStaffFn({ data: { staffUserId: userId }, headers });
+      setStaff((x) => x.filter((s) => s.user_id !== userId));
+      toast.success("تم حذف الحساب");
+    } catch (e) {
+      toast.error((e as Error).message || "فشل الحذف");
     }
-    setInvites((x) => x.filter((i) => i.id !== id));
   };
 
-  const onRemoveStaff = async (id: string) => {
-    if (!r) return;
-    const { error } = await supabase.from("user_roles").delete().eq("id", id);
-    if (error) {
-      toast.error("فشل الإزالة");
-      return;
+  const onUpdateStaffPw = async () => {
+    if (!staffPwEdit) return;
+    if (staffNewPw.length < 6) { toast.error("كلمة السر 6 أحرف على الأقل"); return; }
+    setSavingStaffPw(true);
+    try {
+      const headers = await getServerAuthHeaders();
+      await updateStaffPwFn({ data: { staffUserId: staffPwEdit.userId, newPassword: staffNewPw }, headers });
+      toast.success("تم تغيير كلمة السر");
+      setStaffPwEdit(null);
+      setStaffNewPw("");
+    } catch (e) {
+      toast.error((e as Error).message || "فشل التغيير");
+    } finally {
+      setSavingStaffPw(false);
     }
-    setStaff((x) => x.filter((s) => s.id !== id));
-    toast.success("تمت الإزالة");
   };
 
   const onPickLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2750,24 +2750,11 @@ function Page() {
           <h3 className="text-lg font-bold">إدارة الفريق (مديرون)</h3>
         </div>
         <p className="text-sm text-muted-foreground">
-          ادعُ مديرين عبر الإيميل — كل دور يرى فقط ما يخصه في لوحة التحكم
+          أنشئ حسابات للمديرين مباشرة — كل دور يرى فقط ما يخصه في لوحة التحكم
         </p>
 
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              placeholder="manager@example.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              dir="ltr"
-              className="flex-1"
-            />
-            <Button onClick={onInvite} disabled={inviting}>
-              {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-              <span className="hidden sm:inline mr-2">دعوة</span>
-            </Button>
-          </div>
+        <div className="flex flex-col gap-3">
+          {/* Role selection */}
           <div className="flex flex-wrap gap-1">
             {(Object.entries(MANAGER_ROLE_LABELS) as [ManagerRole, string][]).map(([role, label]) => (
               <button
@@ -2783,48 +2770,61 @@ function Page() {
               </button>
             ))}
           </div>
-        </div>
-
-        {invites.length > 0 && (
-          <div>
-            <h4 className="text-sm font-bold mb-2 text-muted-foreground">دعوات معلقة</h4>
-            <ul className="space-y-2">
-              {invites.map((inv) => (
-                <li key={inv.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2">
-                  <span className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    <span dir="ltr">{inv.email}</span>
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {MANAGER_ROLE_LABELS[inv.role] ?? inv.role}
-                    </span>
-                  </span>
-                  <button
-                    onClick={() => onCancelInvite(inv.id)}
-                    className="text-muted-foreground hover:text-red-600"
-                    aria-label="cancel"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {/* Email */}
+          <Input
+            type="email"
+            placeholder="manager@example.com"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            dir="ltr"
+          />
+          {/* Password */}
+          <div className="relative">
+            <Input
+              type={showInvitePassword ? "text" : "password"}
+              placeholder="كلمة السر (6 أحرف على الأقل)"
+              value={invitePassword}
+              onChange={(e) => setInvitePassword(e.target.value)}
+              dir="ltr"
+              className="pl-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowInvitePassword((v) => !v)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
-        )}
+          <Button onClick={onCreateStaff} disabled={inviting} className="w-full">
+            {inviting ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : <UserPlus className="w-4 h-4 ml-2" />}
+            إنشاء حساب {MANAGER_ROLE_LABELS[inviteRole]}
+          </Button>
+        </div>
 
         {staff.length > 0 && (
           <div>
             <h4 className="text-sm font-bold mb-2 text-muted-foreground">أعضاء الفريق ({staff.length})</h4>
             <ul className="space-y-2">
               {staff.map((s) => (
-                <li key={s.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2">
-                  <span className="text-sm font-mono" dir="ltr">{s.user_id.slice(0, 8)}…</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {s.role === "admin" ? "مالك" : (MANAGER_ROLE_LABELS[s.role] ?? s.role)}
-                    </span>
+                <li key={s.user_id} className="flex items-center justify-between bg-muted/40 rounded-xl px-3 py-2 gap-2 flex-wrap">
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm font-mono truncate" dir="ltr">{s.email}</span>
+                    <span className="text-xs text-primary mt-0.5">{MANAGER_ROLE_LABELS[s.role as ManagerRole] ?? s.role}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => { setStaffPwEdit({ userId: s.user_id, email: s.email }); setStaffNewPw(""); }}
+                    >
+                      <KeyRound className="w-3 h-3 ml-1" />
+                      تغيير الباسورد
+                    </Button>
                     <button
-                      onClick={() => onRemoveStaff(s.id)}
-                      className="text-muted-foreground hover:text-red-600"
+                      onClick={() => onRemoveStaff(s.user_id)}
+                      className="text-muted-foreground hover:text-red-600 p-1"
                       aria-label="remove"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -2836,6 +2836,33 @@ function Page() {
           </div>
         )}
       </div>
+
+      {/* Change staff password dialog */}
+      <Dialog open={!!staffPwEdit} onOpenChange={(o) => { if (!o) setStaffPwEdit(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>تغيير كلمة السر</DialogTitle>
+            <DialogDescription dir="ltr">{staffPwEdit?.email}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>كلمة السر الجديدة</Label>
+            <Input
+              type="text"
+              placeholder="6 أحرف على الأقل"
+              value={staffNewPw}
+              onChange={(e) => setStaffNewPw(e.target.value)}
+              dir="ltr"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStaffPwEdit(null)}>إلغاء</Button>
+            <Button onClick={onUpdateStaffPw} disabled={savingStaffPw}>
+              {savingStaffPw && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
+              حفظ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="rounded-2xl bg-background border-2 border-red-200 p-6 space-y-3">
         <h3 className="text-lg font-bold text-red-700">المنطقة الحساسة</h3>

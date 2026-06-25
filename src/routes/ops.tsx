@@ -50,7 +50,7 @@ type NavItem = {
 };
 
 const ALL_NAV: NavItem[] = [
-  { to: "/ops", label: tx("نظرة عامة"), icon: LayoutDashboard, exact: true },
+  { to: "/ops", label: tx("نظرة عامة"), icon: LayoutDashboard, exact: true, roles: ["admin", "operations_manager", "hr_manager", "purchasing_manager"] },
   { to: "/ops/inventory", label: tx("المخزون"), icon: Package, roles: ["admin", "operations_manager", "production_manager", "purchasing_manager"] },
   { to: "/ops/inventory-count", label: tx("جرد المخزون"), icon: ClipboardCheck, roles: ["admin", "operations_manager", "production_manager", "purchasing_manager"] },
   { to: "/ops/recipes", label: tx("الوصفات"), icon: ChefHat, roles: ["admin", "operations_manager", "production_manager"] },
@@ -73,11 +73,19 @@ const ROLE_LABELS: Record<string, string> = {
   purchasing_manager: "مسؤول المشتريات",
 };
 
+// Roles that should land on their first allowed page instead of the overview
+const REDIRECT_FROM_OVERVIEW: Record<string, string> = {
+  production_manager: "/ops/inventory",
+  purchasing_manager: "/ops/inventory",
+  hr_manager: "/ops/employees",
+};
+
 function OpsLayout() {
   useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const [userRole, setUserRole] = useState<string>("admin");
+  // null = still loading, avoids showing wrong nav items before role is fetched
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -88,14 +96,19 @@ function OpsLayout() {
         .select("role")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (data?.role) setUserRole(data.role);
-      else setUserRole("admin"); // owner has full access
+      const role = data?.role ?? "admin";
+      setUserRole(role);
+      // If this role can't access the overview page and the user landed there, redirect
+      if ((pathname === "/ops" || pathname === "/ops/") && REDIRECT_FROM_OVERVIEW[role]) {
+        navigate({ to: REDIRECT_FROM_OVERVIEW[role] as "/ops/inventory" | "/ops/employees", replace: true });
+      }
     })();
   }, []);
 
-  const NAV = ALL_NAV.filter(
-    (item) => !item.roles || item.roles.includes(userRole),
-  );
+  // Don't render nav until role is known — prevents flicker showing wrong items
+  const NAV = userRole === null
+    ? []
+    : ALL_NAV.filter((item) => !item.roles || item.roles.includes(userRole));
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(to + "/");
@@ -105,7 +118,7 @@ function OpsLayout() {
     navigate({ to: "/login" });
   };
 
-  const current = NAV.find((n) => isActive(n.to, n.exact)) ?? NAV[0];
+  const current = NAV.find((n) => isActive(n.to, n.exact));
 
   return (
     <div className="min-h-screen flex md:gap-5 md:p-5 bg-background" dir="rtl">
