@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useMotionValue, useSpring } from "framer-motion";
 import {
   ShoppingBag,
   DollarSign,
@@ -7,11 +8,15 @@ import {
   TrendingUp,
   ArrowUp,
   ArrowDown,
+  Flame,
+  Snowflake,
+  Clock,
+  Wallet,
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -240,43 +245,266 @@ async function loadAnalytics(restaurantId: string): Promise<AnalyticsData> {
   return { kpis, daily, topItems, bottomItems, hourly };
 }
 
+/* ---------------------------------------------------------------------- */
+/* Small shared visual helpers                                            */
+/* ---------------------------------------------------------------------- */
+
+/** requestAnimationFrame-driven count-up between the previous and next value. */
+function useCountUp(target: number, duration = 750) {
+  const [value, setValue] = useState(target);
+  const prevRef = useRef(target);
+  const first = useRef(true);
+
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      prevRef.current = target;
+      setValue(target);
+      return;
+    }
+    const start = prevRef.current;
+    const startTime = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(start + (target - start) * eased);
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        prevRef.current = target;
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, duration]);
+
+  return value;
+}
+
+/** Wraps children with a subtle mouse-follow 3D tilt + spring reset. */
+function Tilt3D({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const rotateX = useMotionValue(0);
+  const rotateY = useMotionValue(0);
+  const springX = useSpring(rotateX, { stiffness: 260, damping: 22 });
+  const springY = useSpring(rotateY, { stiffness: 260, damping: 22 });
+
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    rotateY.set(px * 9);
+    rotateX.set(-py * 9);
+  };
+  const handleLeave = () => {
+    rotateX.set(0);
+    rotateY.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
+      style={{ rotateX: springX, rotateY: springY, transformPerspective: 900 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/** Floating blurred gradient blobs for page atmosphere — purely decorative. */
+function AnimatedBackground() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -top-24 -right-20 w-96 h-96 rounded-full bg-gradient-primary opacity-[0.14] blur-[100px] animate-float-slow" />
+      <div className="absolute top-1/3 -left-24 w-80 h-80 rounded-full bg-gradient-primary opacity-[0.10] blur-[110px] animate-float-slower" />
+      <div className="absolute bottom-0 right-1/4 w-72 h-72 rounded-full bg-gradient-primary opacity-[0.09] blur-[90px] animate-float-slow" />
+    </div>
+  );
+}
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  subtitle,
+  action,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 flex-wrap mb-5">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-primary shadow-glow flex items-center justify-center shrink-0">
+          <Icon className="w-5 h-5 text-primary-foreground" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-foreground leading-tight">
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/** Floating glass tooltip shared by all charts on the page. */
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  labelPrefix,
+  labelFormatter,
+  valueLabel,
+  valueFormatter,
+}: {
+  active?: boolean;
+  payload?: Array<{ value: number }>;
+  label?: string | number;
+  labelPrefix?: string;
+  labelFormatter?: (label: string | number | undefined) => string;
+  valueLabel: string;
+  valueFormatter: (n: number) => string;
+}) {
+  if (!active || !payload || !payload.length) return null;
+  const value = payload[0].value;
+  return (
+    <div className="glass-strong rounded-xl px-3.5 py-2.5 shadow-elegant border border-border/60 text-xs min-w-[120px]">
+      <div className="text-muted-foreground mb-1">
+        {labelFormatter ? labelFormatter(label) : `${labelPrefix ?? ""}${label}`}
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">{valueLabel}</span>
+        <span className="font-bold text-foreground tabular-nums">
+          {valueFormatter(value)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const recessiveGridProps = {
+  strokeDasharray: "4 8",
+  stroke: "var(--border)",
+  strokeOpacity: 0.6,
+  vertical: false,
+};
+
+const axisTickProps = {
+  fontSize: 11,
+  fill: "var(--muted-foreground)",
+};
+
 function KpiCard({
   title,
   value,
   prev,
   format,
   Icon,
+  trend,
+  index,
 }: {
   title: string;
   value: number;
   prev: number;
   format: (n: number) => string;
   Icon: React.ComponentType<{ className?: string }>;
+  trend?: number[];
+  index: number;
 }) {
   const diff = pctChange(value, prev);
   const positive = diff >= 0;
+  const animated = useCountUp(value);
+  const sparkData = (trend ?? []).map((v, i) => ({ i, v }));
+
   return (
-    <div className="group relative rounded-2xl glass-card hover-lift p-6 overflow-hidden">
-      <div className="absolute -top-16 -left-16 w-40 h-40 rounded-full bg-gradient-primary opacity-10 blur-3xl group-hover:opacity-20 transition-opacity" />
-      <div className="relative flex items-start justify-between mb-4">
-        <div className="w-11 h-11 rounded-xl bg-gradient-primary shadow-glow flex items-center justify-center">
-          <Icon className="w-5 h-5 text-primary-foreground" />
+    <motion.div
+      initial={{ opacity: 0, y: 18, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.5, delay: index * 0.08, ease: [0.2, 0.7, 0.2, 1] }}
+      style={{ transformStyle: "preserve-3d" }}
+    >
+      <Tilt3D className="group relative rounded-2xl glass-card hover-lift p-6 overflow-hidden">
+        <div className="absolute -top-16 -left-16 w-40 h-40 rounded-full bg-gradient-primary opacity-10 blur-3xl group-hover:opacity-25 transition-opacity duration-500" />
+        <div className="relative flex items-start justify-between mb-4">
+          <div
+            className="w-11 h-11 rounded-xl bg-gradient-primary shadow-glow flex items-center justify-center"
+            style={{ transform: "translateZ(30px)" }}
+          >
+            <Icon className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <span className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground text-left">
+            {title}
+          </span>
         </div>
-        <span className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground text-left">{title}</span>
-      </div>
-      <div className="relative text-3xl md:text-4xl font-bold text-foreground mb-2 tabular-nums">{format(value)}</div>
-      <div className="relative flex items-center gap-1.5 text-xs">
-        <span
-          className={`inline-flex items-center gap-0.5 font-semibold px-1.5 py-0.5 rounded-md ${
-            positive ? "text-emerald-600 bg-emerald-500/10" : "text-red-500 bg-red-500/10"
-          }`}
+        <div
+          className="relative text-3xl md:text-4xl font-bold text-foreground mb-2 tabular-nums"
+          style={{ transform: "translateZ(20px)" }}
         >
-          {positive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-          {Math.abs(diff)}%
-        </span>
-        <span className="text-muted-foreground">vs الفترة السابقة</span>
-      </div>
-    </div>
+          {format(Math.round(animated))}
+        </div>
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span
+              className={`inline-flex items-center gap-0.5 font-semibold px-1.5 py-0.5 rounded-md ${
+                positive
+                  ? "text-emerald-600 bg-emerald-500/10"
+                  : "text-red-500 bg-red-500/10"
+              }`}
+            >
+              {positive ? (
+                <ArrowUp className="w-3 h-3" />
+              ) : (
+                <ArrowDown className="w-3 h-3" />
+              )}
+              {Math.abs(diff)}%
+            </span>
+            <span className="text-muted-foreground">vs الفترة السابقة</span>
+          </div>
+          {sparkData.length > 1 && (
+            <div className="w-16 h-8 opacity-80" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={sparkData}>
+                  <defs>
+                    <linearGradient id={`sparkGrad-${index}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <Area
+                    type="monotone"
+                    dataKey="v"
+                    stroke="var(--primary)"
+                    strokeWidth={1.5}
+                    fill={`url(#sparkGrad-${index})`}
+                    isAnimationActive
+                    animationDuration={900}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </Tilt3D>
+    </motion.div>
   );
 }
 
@@ -383,65 +611,82 @@ function RevenueRangeCard({
     : new Date(2000, 0, 1);
   const maxDate = startOfDay(new Date());
 
-  return (
-    <div className="rounded-2xl glass-card p-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <h3 className="text-lg font-semibold text-foreground">💰 الإيرادات حسب الفترة</h3>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={preset} onValueChange={(v) => setPreset(v as RangePreset)}>
-            <SelectTrigger className="w-36 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="week">أسبوع</SelectItem>
-              <SelectItem value="month">شهر</SelectItem>
-              <SelectItem value="year">سنة</SelectItem>
-              <SelectItem value="custom">مخصص</SelectItem>
-            </SelectContent>
-          </Select>
-          {preset === "custom" && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={cn(
-                    "h-9 gap-2",
-                    !customDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="w-4 h-4" />
-                  {customDate ? fmtKey(customDate) : "اختر تاريخ البداية"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={customDate}
-                  onSelect={setCustomDate}
-                  disabled={(d) => d < minDate || d > maxDate}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-      </div>
+  const animatedTotal = useCountUp(total);
+  const animatedCount = useCountUp(count);
+  const animatedAvg = useCountUp(count ? Math.round(total / count) : 0);
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-        <div className="rounded-xl border border-border bg-muted/40 p-3">
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+      className="rounded-2xl glass-card hover-lift p-6"
+    >
+      <SectionHeader
+        icon={Wallet}
+        title="الإيرادات حسب الفترة"
+        action={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={preset} onValueChange={(v) => setPreset(v as RangePreset)}>
+              <SelectTrigger className="w-36 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">أسبوع</SelectItem>
+                <SelectItem value="month">شهر</SelectItem>
+                <SelectItem value="year">سنة</SelectItem>
+                <SelectItem value="custom">مخصص</SelectItem>
+              </SelectContent>
+            </Select>
+            {preset === "custom" && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-9 gap-2",
+                      !customDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="w-4 h-4" />
+                    {customDate ? fmtKey(customDate) : "اختر تاريخ البداية"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={customDate}
+                    onSelect={setCustomDate}
+                    disabled={(d) => d < minDate || d > maxDate}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+        <div className="rounded-xl border border-border/70 bg-muted/40 p-3 transition-colors hover:bg-muted/60">
           <div className="text-xs text-muted-foreground mb-1">{label}</div>
-          <div className="text-xl font-bold text-foreground">{formatDZD(total)}</div>
+          <div className="text-xl font-bold text-foreground tabular-nums">
+            {formatDZD(Math.round(animatedTotal))}
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-muted/40 p-3">
+        <div className="rounded-xl border border-border/70 bg-muted/40 p-3 transition-colors hover:bg-muted/60">
           <div className="text-xs text-muted-foreground mb-1">عدد الطلبات</div>
-          <div className="text-xl font-bold text-foreground">{count}</div>
+          <div className="text-xl font-bold text-foreground tabular-nums">
+            {Math.round(animatedCount)}
+          </div>
         </div>
-        <div className="rounded-xl border border-border bg-muted/40 p-3">
+        <div className="rounded-xl border border-border/70 bg-muted/40 p-3 transition-colors hover:bg-muted/60">
           <div className="text-xs text-muted-foreground mb-1">متوسط الطلب</div>
-          <div className="text-xl font-bold text-foreground">
-            {formatDZD(count ? Math.round(total / count) : 0)}
+          <div className="text-xl font-bold text-foreground tabular-nums">
+            {formatDZD(Math.round(animatedAvg))}
           </div>
         </div>
       </div>
@@ -457,25 +702,42 @@ function RevenueRangeCard({
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chart}>
               <defs>
-                <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="oklch(0.68 0.18 255)" stopOpacity={0.95} />
-                  <stop offset="100%" stopColor="oklch(0.70 0.18 285)" stopOpacity={0.6} />
+                <linearGradient id="barGradRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.35} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
-              <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
-              <Tooltip
-                formatter={(v: number) => [formatDZD(v), "المبيعات"]}
-                labelFormatter={(l) => `التاريخ: ${l}`}
-                contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
+              <CartesianGrid {...recessiveGridProps} />
+              <XAxis
+                dataKey="label"
+                tick={axisTickProps}
+                axisLine={false}
+                tickLine={false}
               />
-              <Bar dataKey="total" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
+              <YAxis tick={axisTickProps} axisLine={false} tickLine={false} width={40} />
+              <Tooltip
+                cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+                content={
+                  <ChartTooltip
+                    labelPrefix="التاريخ: "
+                    valueLabel="المبيعات"
+                    valueFormatter={formatDZD}
+                  />
+                }
+              />
+              <Bar
+                dataKey="total"
+                fill="url(#barGradRevenue)"
+                radius={[4, 4, 0, 0]}
+                isAnimationActive
+                animationDuration={900}
+                animationEasing="ease-out"
+              />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -551,9 +813,12 @@ function Page() {
 
   if (!hasAnyData) {
     return (
-      <div className="rounded-2xl border bg-background p-12 text-center">
-        <TrendingUp className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">لم تبدأ المبيعات بعد</p>
+      <div className="relative rounded-2xl border bg-background p-12 text-center overflow-hidden">
+        <AnimatedBackground />
+        <div className="relative">
+          <TrendingUp className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">لم تبدأ المبيعات بعد</p>
+        </div>
       </div>
     );
   }
@@ -562,6 +827,9 @@ function Page() {
     label: d.date.slice(5),
     total: d.total,
   }));
+
+  // Shared decorative trend used across KPI sparklines (last 7 of the 30-day series).
+  const sparkTrend = data.daily.slice(-7).map((d) => d.total);
 
   const maxTopQty = data.topItems[0]?.qty ?? 0;
 
@@ -589,191 +857,284 @@ function Page() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2 flex-wrap">
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleExport("excel")} className="gap-2">
-            <FileSpreadsheet className="w-4 h-4" />
-            Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("pdf")} className="gap-2">
-            <FileText className="w-4 h-4" />
-            PDF
-          </Button>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          title="طلبات اليوم"
-          value={data.kpis.ordersToday}
-          prev={data.kpis.ordersTodayPrev}
-          format={(n) => String(n)}
-          Icon={ShoppingBag}
-        />
-        <KpiCard
-          title="مبيعات اليوم"
-          value={data.kpis.salesToday}
-          prev={data.kpis.salesTodayPrev}
-          format={formatDZD}
-          Icon={DollarSign}
-        />
-        <KpiCard
-          title="متوسط قيمة الطلب (الأسبوع)"
-          value={Math.round(data.kpis.avgOrderWeek)}
-          prev={Math.round(data.kpis.avgOrderWeekPrev)}
-          format={formatDZD}
-          Icon={Receipt}
-        />
-        <KpiCard
-          title="مبيعات هذا الشهر"
-          value={data.kpis.salesMonth}
-          prev={data.kpis.salesMonthPrev}
-          format={formatDZD}
-          Icon={TrendingUp}
-        />
-      </div>
-
-      <div className="rounded-2xl glass-card p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">📈 المبيعات اليومية (آخر 30 يوم)</h3>
-        <div className="h-64" dir="ltr">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={dailyChart}>
-              <defs>
-                <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="oklch(0.62 0.19 255)" />
-                  <stop offset="100%" stopColor="oklch(0.74 0.17 290)" />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
-              <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
-              <Tooltip
-                formatter={(v: number) => [formatDZD(v), "المبيعات"]}
-                labelFormatter={(l) => `التاريخ: ${l}`}
-                contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="total"
-                stroke="url(#lineGrad)"
-                strokeWidth={3}
-                dot={false}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <RevenueRangeCard
-        restaurantId={restaurantId!}
-        restaurantCreatedAt={restaurantCreatedAt}
-      />
-
-      <div className="rounded-2xl glass-card p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">🔥 الأصناف الأكثر طلباً (هذا الشهر)</h3>
-        {data.topItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">لا توجد بيانات بعد</p>
-        ) : (
-          <div className="space-y-3">
-            {data.topItems.map((it, idx) => (
-              <div key={idx} className="flex items-center gap-3">
-                {it.image_url ? (
-                  <img
-                    src={it.image_url}
-                    alt={it.name}
-                    className="w-10 h-10 rounded-lg object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-muted" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="font-medium truncate">{it.name}</div>
-                    <div className="text-sm text-muted-foreground shrink-0">
-                      {it.qty}× · {formatDZD(it.revenue)}
-                    </div>
-                  </div>
-                  <div className="h-2 bg-muted/60 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-primary rounded-full transition-all duration-500"
-                      style={{
-                        width: `${maxTopQty ? (it.qty / maxTopQty) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
+    <div className="relative">
+      <AnimatedBackground />
+      <div className="relative space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center justify-end gap-2 flex-wrap"
+        >
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleExport("excel")} className="gap-2">
+              <FileSpreadsheet className="w-4 h-4" />
+              Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport("pdf")} className="gap-2">
+              <FileText className="w-4 h-4" />
+              PDF
+            </Button>
           </div>
-        )}
-      </div>
+        </motion.div>
 
-      <div className="rounded-2xl glass-card p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-2">❄️ الأصناف الأقل طلباً (هذا الشهر)</h3>
-        <p className="text-xs italic text-muted-foreground mb-4">
-          فكر في تحسين هذه الأصناف أو إزالتها
-        </p>
-        {data.bottomItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">لا توجد بيانات بعد</p>
-        ) : (
-          <div className="space-y-2">
-            {data.bottomItems.map((it, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-3 py-2 border-b last:border-0"
-              >
-                <div className="flex items-center gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" style={{ perspective: 1200 }}>
+          <KpiCard
+            title="طلبات اليوم"
+            value={data.kpis.ordersToday}
+            prev={data.kpis.ordersTodayPrev}
+            format={(n) => String(n)}
+            Icon={ShoppingBag}
+            trend={sparkTrend}
+            index={0}
+          />
+          <KpiCard
+            title="مبيعات اليوم"
+            value={data.kpis.salesToday}
+            prev={data.kpis.salesTodayPrev}
+            format={formatDZD}
+            Icon={DollarSign}
+            trend={sparkTrend}
+            index={1}
+          />
+          <KpiCard
+            title="متوسط قيمة الطلب (الأسبوع)"
+            value={Math.round(data.kpis.avgOrderWeek)}
+            prev={Math.round(data.kpis.avgOrderWeekPrev)}
+            format={formatDZD}
+            Icon={Receipt}
+            trend={sparkTrend}
+            index={2}
+          />
+          <KpiCard
+            title="مبيعات هذا الشهر"
+            value={data.kpis.salesMonth}
+            prev={data.kpis.salesMonthPrev}
+            format={formatDZD}
+            Icon={TrendingUp}
+            trend={sparkTrend}
+            index={3}
+          />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+          className="rounded-2xl glass-card hover-lift p-6"
+        >
+          <SectionHeader
+            icon={TrendingUp}
+            title="المبيعات اليومية"
+            subtitle="آخر 30 يوم"
+          />
+          <div className="h-64" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyChart}>
+                <defs>
+                  <linearGradient id="areaGradSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid {...recessiveGridProps} />
+                <XAxis
+                  dataKey="label"
+                  tick={axisTickProps}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis tick={axisTickProps} axisLine={false} tickLine={false} width={40} />
+                <Tooltip
+                  cursor={{ stroke: "var(--primary)", strokeOpacity: 0.25, strokeWidth: 2 }}
+                  content={
+                    <ChartTooltip
+                      labelPrefix="التاريخ: "
+                      valueLabel="المبيعات"
+                      valueFormatter={formatDZD}
+                    />
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  stroke="var(--primary)"
+                  strokeWidth={2}
+                  fill="url(#areaGradSales)"
+                  dot={false}
+                  activeDot={{ r: 5, strokeWidth: 0 }}
+                  isAnimationActive
+                  animationDuration={1100}
+                  animationEasing="ease-out"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+
+        <RevenueRangeCard
+          restaurantId={restaurantId!}
+          restaurantCreatedAt={restaurantCreatedAt}
+        />
+
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+          className="rounded-2xl glass-card hover-lift p-6"
+        >
+          <SectionHeader
+            icon={Flame}
+            title="الأصناف الأكثر طلباً"
+            subtitle="هذا الشهر"
+          />
+          {data.topItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">لا توجد بيانات بعد</p>
+          ) : (
+            <div className="space-y-3">
+              {data.topItems.map((it, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, x: 12 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.35, delay: idx * 0.03 }}
+                  className="flex items-center gap-3"
+                >
                   {it.image_url ? (
                     <img
                       src={it.image_url}
                       alt={it.name}
-                      className="w-8 h-8 rounded-lg object-cover"
+                      className="w-10 h-10 rounded-lg object-cover"
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-lg bg-muted" />
+                    <div className="w-10 h-10 rounded-lg bg-muted" />
                   )}
-                  <span className="text-sm font-medium">{it.name}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {it.qty}× · {formatDZD(it.revenue)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="text-sm text-muted-foreground shrink-0">
+                        {it.qty}× · {formatDZD(it.revenue)}
+                      </div>
+                    </div>
+                    <div className="h-2 bg-muted/60 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        whileInView={{
+                          width: `${maxTopQty ? (it.qty / maxTopQty) * 100 : 0}%`,
+                        }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.7, delay: idx * 0.03, ease: [0.2, 0.7, 0.2, 1] }}
+                        className="h-full bg-gradient-primary rounded-full"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
 
-      <div className="rounded-2xl glass-card p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">⏰ ساعات الذروة (هذا الأسبوع)</h3>
-        <div className="h-56" dir="ltr">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.hourly}>
-              <defs>
-                <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="oklch(0.68 0.18 255)" stopOpacity={0.95} />
-                  <stop offset="100%" stopColor="oklch(0.70 0.18 285)" stopOpacity={0.6} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis
-                dataKey="hour"
-                tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                stroke="var(--border)"
-                tickFormatter={(h) => `${h}:00`}
-              />
-              <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" allowDecimals={false} />
-              <Tooltip
-                formatter={(v: number) => [v, "طلبات"]}
-                labelFormatter={(h) => `الساعة ${h}:00`}
-                contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
-              />
-              <Bar dataKey="count" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+          className="rounded-2xl glass-card hover-lift p-6"
+        >
+          <SectionHeader
+            icon={Snowflake}
+            title="الأصناف الأقل طلباً"
+            subtitle="فكر في تحسين هذه الأصناف أو إزالتها"
+          />
+          {data.bottomItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">لا توجد بيانات بعد</p>
+          ) : (
+            <div className="space-y-2">
+              {data.bottomItems.map((it, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-3 py-2 border-b border-border/60 last:border-0"
+                >
+                  <div className="flex items-center gap-3">
+                    {it.image_url ? (
+                      <img
+                        src={it.image_url}
+                        alt={it.name}
+                        className="w-8 h-8 rounded-lg object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-muted" />
+                    )}
+                    <span className="text-sm font-medium">{it.name}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {it.qty}× · {formatDZD(it.revenue)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
+          className="rounded-2xl glass-card hover-lift p-6"
+        >
+          <SectionHeader icon={Clock} title="ساعات الذروة" subtitle="هذا الأسبوع" />
+          <div className="h-56" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.hourly}>
+                <defs>
+                  <linearGradient id="barGradHourly" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.35} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid {...recessiveGridProps} />
+                <XAxis
+                  dataKey="hour"
+                  tick={axisTickProps}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(h) => `${h}:00`}
+                />
+                <YAxis
+                  tick={axisTickProps}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                  width={30}
+                />
+                <Tooltip
+                  cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+                  content={
+                    <ChartTooltip
+                      labelFormatter={(h) => `الساعة ${h}:00`}
+                      valueLabel="طلبات"
+                      valueFormatter={(v) => `${Math.round(v)}`}
+                    />
+                  }
+                />
+                <Bar
+                  dataKey="count"
+                  fill="url(#barGradHourly)"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive
+                  animationDuration={900}
+                  animationEasing="ease-out"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

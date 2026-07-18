@@ -6,13 +6,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  getChefContext,
-  chefListActive,
-  chefStartPreparing,
-  chefMarkReady,
-  chefLogout,
-} from "@/lib/chef.functions";
-import {
   getIndividualChefContext,
   individualChefListActive,
   individualChefStartPreparing,
@@ -51,11 +44,6 @@ function timeAgo(iso: string) {
 
 function Page() {
   const navigate = useNavigate();
-  const ctxFn = useServerFn(getChefContext);
-  const listFn = useServerFn(chefListActive);
-  const startFn = useServerFn(chefStartPreparing);
-  const readyFn = useServerFn(chefMarkReady);
-  const logoutFn = useServerFn(chefLogout);
   const iCtxFn = useServerFn(getIndividualChefContext);
   const iListFn = useServerFn(individualChefListActive);
   const iStartFn = useServerFn(individualChefStartPreparing);
@@ -63,7 +51,6 @@ function Page() {
   const iLogoutFn = useServerFn(individualChefLogout);
 
   const [token, setToken] = useState<string | null>(null);
-  const [isIndividual, setIsIndividual] = useState(false);
   const [chefName, setChefName] = useState<string | null>(null);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -77,65 +64,39 @@ function Page() {
     return () => clearInterval(i);
   }, []);
 
-  // Auth — supports both individual chef sessions and the legacy shared session
+  // Auth — individual chef sessions
   useEffect(() => {
-    const it = localStorage.getItem("individual_chef_token");
-    const iexp = localStorage.getItem("individual_chef_expires");
-    if (it && iexp && new Date(iexp) > new Date()) {
-      setIsIndividual(true);
-      setToken(it);
-      iCtxFn({ data: { token: it } })
-        .then((res) => {
-          setRestaurant(res.restaurant);
-          setChefName(res.chefName);
-        })
-        .catch(() => {
-          const r = localStorage.getItem("individual_chef_restaurant");
-          const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-          localStorage.removeItem("individual_chef_token");
-          localStorage.removeItem("individual_chef_expires");
-          navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
-        });
-      return;
-    }
-    const t = localStorage.getItem("chef_token");
-    const exp = localStorage.getItem("chef_expires");
-    if (!t || !exp || new Date(exp) < new Date()) {
-      const ir = localStorage.getItem("individual_chef_restaurant");
-      if (ir) {
-        const rid = (JSON.parse(ir) as Restaurant).id;
-        localStorage.removeItem("individual_chef_token");
-        localStorage.removeItem("individual_chef_expires");
-        navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
-        return;
-      }
-      const r = localStorage.getItem("chef_restaurant");
+    const goLogin = () => {
+      const r = sessionStorage.getItem("individual_chef_restaurant");
       const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-      localStorage.removeItem("chef_token");
-      localStorage.removeItem("chef_expires");
-      navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
+      sessionStorage.removeItem("individual_chef_token");
+      sessionStorage.removeItem("individual_chef_expires");
+      navigate({ to: "/kitchen-login", search: { rid } });
+    };
+    const it = sessionStorage.getItem("individual_chef_token");
+    const iexp = sessionStorage.getItem("individual_chef_expires");
+    if (!it || !iexp || new Date(iexp) < new Date()) {
+      goLogin();
       return;
     }
-    setToken(t);
-    ctxFn({ data: { token: t } })
-      .then((res) => setRestaurant(res.restaurant))
-      .catch(() => {
-        localStorage.removeItem("chef_token");
-        const r = localStorage.getItem("chef_restaurant");
-        const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-        navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
-      });
-  }, [ctxFn, iCtxFn, navigate]);
+    setToken(it);
+    iCtxFn({ data: { token: it } })
+      .then((res) => {
+        setRestaurant(res.restaurant);
+        setChefName(res.chefName);
+      })
+      .catch(goLogin);
+  }, [iCtxFn, navigate]);
 
   const refresh = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await (isIndividual ? iListFn : listFn)({ data: { token } });
+      const res = await iListFn({ data: { token } });
       setOrders(res.orders);
     } catch {
       // silent
     }
-  }, [token, isIndividual, listFn, iListFn]);
+  }, [token, iListFn]);
 
   useEffect(() => {
     if (!token || !restaurant) return;
@@ -200,7 +161,7 @@ function Page() {
     if (!token) return;
     setBusy(o.id);
     try {
-      await (isIndividual ? iStartFn : startFn)({ data: { token, orderId: o.id } });
+      await iStartFn({ data: { token, orderId: o.id } });
       setOrders((prev) =>
         prev.map((x) => (x.id === o.id ? { ...x, status: "preparing", acknowledged: true } : x)),
       );
@@ -215,7 +176,7 @@ function Page() {
     if (!token) return;
     setBusy(o.id);
     try {
-      await (isIndividual ? iReadyFn : readyFn)({ data: { token, orderId: o.id } });
+      await iReadyFn({ data: { token, orderId: o.id } });
       setOrders((prev) => prev.filter((x) => x.id !== o.id));
     } catch (e) {
       toast.error((e as Error).message);
@@ -227,26 +188,18 @@ function Page() {
   async function onLogout() {
     if (token) {
       try {
-        await (isIndividual ? iLogoutFn : logoutFn)({ data: { token } });
+        await iLogoutFn({ data: { token } });
       } catch {
         // ignore
       }
     }
-    if (isIndividual) {
-      const r = localStorage.getItem("individual_chef_restaurant");
-      const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-      localStorage.removeItem("individual_chef_token");
-      localStorage.removeItem("individual_chef_expires");
-      localStorage.removeItem("individual_chef_name");
-      localStorage.removeItem("individual_chef_id");
-      navigate({ to: "/kitchen-login", search: { r: "", rid, mode: "individual" } });
-      return;
-    }
-    const r = localStorage.getItem("chef_restaurant");
+    const r = sessionStorage.getItem("individual_chef_restaurant");
     const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-    localStorage.removeItem("chef_token");
-    localStorage.removeItem("chef_expires");
-    navigate({ to: "/kitchen-login", search: { r: rid, rid: "", mode: "shared" } });
+    sessionStorage.removeItem("individual_chef_token");
+    sessionStorage.removeItem("individual_chef_expires");
+    sessionStorage.removeItem("individual_chef_name");
+    sessionStorage.removeItem("individual_chef_id");
+    navigate({ to: "/kitchen-login", search: { rid } });
   }
 
   if (!restaurant) {

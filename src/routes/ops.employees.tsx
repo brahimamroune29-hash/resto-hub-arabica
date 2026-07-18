@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmployeeDeductionsDialog } from "@/components/ops/EmployeeDeductionsDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { tx } from "@/lib/ops-tx";
 import { useTranslation } from "react-i18next";
 
@@ -60,12 +61,13 @@ type Employee = {
   is_active: boolean;
 };
 
-type Payment = {
+type Settlement = {
   id: string;
   employee_id: string;
-  amount: number;
-  units: number | null;
-  period_month: string; // date YYYY-MM-DD
+  month: string; // YYYY-MM
+  base_salary: number;
+  total_deductions: number;
+  net_salary: number;
   paid_at: string;
   notes: string | null;
 };
@@ -79,14 +81,14 @@ const SALARY_LABELS: Record<SalaryType, string> = {
 const fmt = (n: number) =>
   new Intl.NumberFormat("ar-DZ", { maximumFractionDigits: 2 }).format(n || 0);
 
-function currentPeriodMonth(): string {
+function currentMonth(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function periodLabel(period: string): string {
-  // period: YYYY-MM-DD
-  const [y, m] = period.split("-");
+function periodLabel(month: string): string {
+  // month: YYYY-MM
+  const [y, m] = month.split("-");
   return `${m}/${y}`;
 }
 
@@ -94,11 +96,12 @@ function OpsEmployees() {
   useTranslation();
   const { restaurantId, loading: restaurantLoading } = useRestaurantId();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Add modal
   const [addOpen, setAddOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
   const [form, setForm] = useState({
     name: "",
     role: "",
@@ -107,17 +110,6 @@ function OpsEmployees() {
     base_salary: "0",
   });
   const [saving, setSaving] = useState(false);
-
-  // Pay modal
-  const [payOpen, setPayOpen] = useState(false);
-  const [payEmp, setPayEmp] = useState<Employee | null>(null);
-  const [payForm, setPayForm] = useState({
-    period_month: currentPeriodMonth(),
-    units: "",
-    amount: "0",
-    notes: "",
-  });
-  const [paySaving, setPaySaving] = useState(false);
 
   // Edit employee
   const [editOpen, setEditOpen] = useState(false);
@@ -135,7 +127,7 @@ function OpsEmployees() {
   const [deductOpen, setDeductOpen] = useState(false);
   const [deductEmp, setDeductEmp] = useState<Employee | null>(null);
 
-  const period = currentPeriodMonth();
+  const period = currentMonth();
 
   const loadAll = async (rid: string) => {
     setLoading(true);
@@ -146,14 +138,14 @@ function OpsEmployees() {
         .eq("restaurant_id", rid)
         .order("created_at", { ascending: false }),
       supabase
-        .from("salary_payments")
+        .from("employee_salary_payments")
         .select("*")
         .eq("restaurant_id", rid)
         .order("paid_at", { ascending: false }),
     ]);
     if (emps.error) toast.error(tx("فشل تحميل الموظفين"));
     setEmployees((emps.data ?? []) as Employee[]);
-    setPayments((pays.data ?? []) as Payment[]);
+    setSettlements((pays.data ?? []) as Settlement[]);
     setLoading(false);
   };
 
@@ -168,39 +160,24 @@ function OpsEmployees() {
 
   const paidThisMonth = useMemo(() => {
     const set = new Set<string>();
-    for (const p of payments) {
-      if (p.period_month === period) set.add(p.employee_id);
+    for (const p of settlements) {
+      if (p.month === period) set.add(p.employee_id);
     }
     return set;
-  }, [payments, period]);
+  }, [settlements, period]);
 
   const totalThisMonth = useMemo(
     () =>
-      payments
-        .filter((p) => p.period_month === period)
-        .reduce((s, p) => s + Number(p.amount || 0), 0),
-    [payments, period]
+      settlements
+        .filter((p) => p.month === period)
+        .reduce((s, p) => s + Number(p.net_salary || 0), 0),
+    [settlements, period]
   );
 
   const pendingCount = useMemo(
     () => employees.filter((e) => e.is_active && !paidThisMonth.has(e.id)).length,
     [employees, paidThisMonth]
   );
-
-  // Auto-suggest amount when opening pay modal / changing units
-  useEffect(() => {
-    if (!payEmp) return;
-    if (payEmp.salary_type === "monthly") {
-      setPayForm((f) => ({ ...f, amount: String(payEmp.base_salary || 0) }));
-    } else {
-      const u = Number(payForm.units) || 0;
-      setPayForm((f) => ({
-        ...f,
-        amount: String(u * Number(payEmp.base_salary || 0)),
-      }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payEmp, payForm.units]);
 
   const submitAdd = async () => {
     if (!restaurantId) return;
@@ -228,42 +205,10 @@ function OpsEmployees() {
     await loadAll(restaurantId);
   };
 
+  // Paying = settling the month (base salary − deductions) via the deductions dialog
   const openPay = (e: Employee) => {
-    setPayEmp(e);
-    setPayForm({
-      period_month: period,
-      units: "",
-      amount: e.salary_type === "monthly" ? String(e.base_salary || 0) : "0",
-      notes: "",
-    });
-    setPayOpen(true);
-  };
-
-  const submitPay = async () => {
-    if (!restaurantId || !payEmp) return;
-    const amount = Number(payForm.amount) || 0;
-    if (amount <= 0) {
-      toast.error(tx("المبلغ غير صحيح"));
-      return;
-    }
-    setPaySaving(true);
-    const { error } = await supabase.from("salary_payments").insert({
-      restaurant_id: restaurantId,
-      employee_id: payEmp.id,
-      period_month: payForm.period_month,
-      units: payEmp.salary_type === "monthly" ? null : Number(payForm.units) || 0,
-      amount,
-      notes: payForm.notes.trim() || null,
-    });
-    setPaySaving(false);
-    if (error) {
-      toast.error(tx("فشل تسجيل الدفع"));
-      return;
-    }
-    toast.success(tx("تم تسجيل الدفع"));
-    setPayOpen(false);
-    setPayEmp(null);
-    await loadAll(restaurantId);
+    setDeductEmp(e);
+    setDeductOpen(true);
   };
 
   const toggleActive = async (e: Employee) => {
@@ -320,7 +265,6 @@ function OpsEmployees() {
 
   const deleteEmployee = async (e: Employee) => {
     if (!restaurantId) return;
-    if (!confirm(tx("حذف \"") + (e.name) + tx("\"؟ سجل الرواتب سيُحذف معه."))) return;
     const { error } = await supabase.from("employees").delete().eq("id", e.id);
     if (error) {
       toast.error(tx("فشل الحذف — قد يكون مرتبطاً بمدفوعات"));
@@ -467,7 +411,7 @@ function OpsEmployees() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => deleteEmployee(e)}
+                              onClick={() => setEmployeeToDelete(e)}
                               className="text-destructive focus:text-destructive"
                             >
                               <Trash2 className="w-4 h-4 ml-2" /> {tx("حذف")}
@@ -484,7 +428,7 @@ function OpsEmployees() {
         </Table>
       </Card>
 
-      {/* Recent payments */}
+      {/* Recent settlements */}
       <div>
         <h3 className="font-bold text-lg mb-3">{tx("آخر المدفوعات")}</h3>
         <Card className="overflow-x-auto">
@@ -493,33 +437,33 @@ function OpsEmployees() {
               <TableRow>
                 <TableHead className="text-right">{tx("الموظف")}</TableHead>
                 <TableHead className="text-right">{tx("الشهر")}</TableHead>
-                <TableHead className="text-right">{tx("الوحدات")}</TableHead>
-                <TableHead className="text-right">{tx("المبلغ")}</TableHead>
+                <TableHead className="text-right">{tx("الأساس")}</TableHead>
+                <TableHead className="text-right">{tx("الخصومات")}</TableHead>
+                <TableHead className="text-right">{tx("الصافي")}</TableHead>
                 <TableHead className="text-right">{tx("تاريخ الدفع")}</TableHead>
-                <TableHead className="text-right">{tx("ملاحظات")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payments.length === 0 ? (
+              {settlements.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
                     {tx("لا توجد مدفوعات بعد")}
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.slice(0, 20).map((p) => {
+                settlements.slice(0, 20).map((p) => {
                   const emp = employees.find((e) => e.id === p.employee_id);
                   return (
                     <TableRow key={p.id}>
                       <TableCell>{emp?.name ?? "—"}</TableCell>
-                      <TableCell>{periodLabel(p.period_month)}</TableCell>
-                      <TableCell>{p.units != null ? fmt(Number(p.units)) : "-"}</TableCell>
-                      <TableCell className="font-semibold">{fmt(Number(p.amount))} دج</TableCell>
+                      <TableCell>{periodLabel(p.month)}</TableCell>
+                      <TableCell>{fmt(Number(p.base_salary))} دج</TableCell>
+                      <TableCell className="text-destructive">
+                        {Number(p.total_deductions) > 0 ? `− ${fmt(Number(p.total_deductions))} دج` : "-"}
+                      </TableCell>
+                      <TableCell className="font-semibold">{fmt(Number(p.net_salary))} دج</TableCell>
                       <TableCell>
                         {new Date(p.paid_at).toLocaleDateString("ar-DZ")}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {p.notes || "-"}
                       </TableCell>
                     </TableRow>
                   );
@@ -604,67 +548,6 @@ function OpsEmployees() {
         </DialogContent>
       </Dialog>
 
-      {/* Pay salary modal */}
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent dir="rtl">
-          <DialogHeader>
-            <DialogTitle>
-              دفع راتب — {payEmp?.name} ({payEmp ? SALARY_LABELS[payEmp.salary_type] : ""})
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>{tx("الشهر")}</Label>
-              <Input
-                type="month"
-                value={payForm.period_month.slice(0, 7)}
-                onChange={(e) =>
-                  setPayForm({ ...payForm, period_month: `${e.target.value}-01` })
-                }
-              />
-            </div>
-            {payEmp && payEmp.salary_type !== "monthly" && (
-              <div>
-                <Label>
-                  {payEmp.salary_type === "daily" ? tx("عدد الأيام") : tx("عدد الساعات")}
-                </Label>
-                <Input
-                  type="number"
-                  value={payForm.units}
-                  onChange={(e) => setPayForm({ ...payForm, units: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  السعر: {fmt(Number(payEmp.base_salary))} دج
-                </p>
-              </div>
-            )}
-            <div>
-              <Label>{tx("المبلغ (دج)")}</Label>
-              <Input
-                type="number"
-                value={payForm.amount}
-                onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>{tx("ملاحظات")}</Label>
-              <Textarea
-                value={payForm.notes}
-                onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayOpen(false)}>
-              {tx("إلغاء")}
-            </Button>
-            <Button onClick={submitPay} disabled={paySaving}>
-              {paySaving ? tx("جاري الحفظ...") : tx("تسجيل الدفع")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Edit employee modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent dir="rtl">
@@ -717,11 +600,31 @@ function OpsEmployees() {
       {deductEmp && restaurantId && (
         <EmployeeDeductionsDialog
           open={deductOpen}
-          onOpenChange={(o) => { setDeductOpen(o); if (!o) setDeductEmp(null); }}
+          onOpenChange={(o) => {
+            setDeductOpen(o);
+            if (!o) {
+              setDeductEmp(null);
+              void loadAll(restaurantId);
+            }
+          }}
           restaurantId={restaurantId}
           employee={{ id: deductEmp.id, name: deductEmp.name, base_salary: Number(deductEmp.base_salary) }}
         />
       )}
+
+      <ConfirmDialog
+        open={employeeToDelete !== null}
+        onOpenChange={(o) => { if (!o) setEmployeeToDelete(null); }}
+        title={tx("حذف \"") + (employeeToDelete?.name ?? "") + tx("\"؟")}
+        description={tx("سجل الرواتب سيُحذف معه.")}
+        confirmLabel={tx("حذف")}
+        cancelLabel={tx("إلغاء")}
+        destructive
+        onConfirm={() => {
+          if (employeeToDelete) void deleteEmployee(employeeToDelete);
+          setEmployeeToDelete(null);
+        }}
+      />
     </div>
   );
 }

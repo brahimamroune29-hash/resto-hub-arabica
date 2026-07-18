@@ -34,6 +34,16 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Search params for /waiter-login, so the waiter returns to their restaurant's login. */
+function waiterLoginSearch(): { rid: string } {
+  try {
+    const r = JSON.parse(sessionStorage.getItem("waiter_restaurant") ?? "null") as { id?: unknown } | null;
+    return { rid: typeof r?.id === "string" ? r.id : "" };
+  } catch {
+    return { rid: "" };
+  }
+}
+
 function Page() {
   const navigate = useNavigate();
   const getContext = useServerFn(getWaiterContext);
@@ -50,7 +60,7 @@ function Page() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [filter, setFilter] = useState<"all" | "ready" | "mine">("ready");
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("waiter_token") ?? "" : "";
+  const token = typeof window !== "undefined" ? sessionStorage.getItem("waiter_token") ?? "" : "";
 
   const fetchOrders = useCallback(async () => {
     if (!token) return;
@@ -63,7 +73,7 @@ function Page() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) { navigate({ to: "/waiter-login" }); return; }
+    if (!token) { navigate({ to: "/waiter-login", search: waiterLoginSearch() }); return; }
     getContext({ data: { token } })
       .then((ctx) => {
         setWaiterName(ctx.waiterName);
@@ -71,8 +81,8 @@ function Page() {
         setLoadingCtx(false);
       })
       .catch(() => {
-        localStorage.removeItem("waiter_token");
-        navigate({ to: "/waiter-login" });
+        sessionStorage.removeItem("waiter_token");
+        navigate({ to: "/waiter-login", search: waiterLoginSearch() });
       });
     fetchOrders();
     pollRef.current = setInterval(fetchOrders, 6000);
@@ -80,13 +90,14 @@ function Page() {
   }, [token]);
 
   async function handleLogout() {
+    const search = waiterLoginSearch();
     try { await logout({ data: { token } }); } catch { /* ignore */ }
-    localStorage.removeItem("waiter_token");
-    localStorage.removeItem("waiter_expires");
-    localStorage.removeItem("waiter_name");
-    localStorage.removeItem("waiter_id");
-    localStorage.removeItem("waiter_restaurant");
-    navigate({ to: "/waiter-login" });
+    sessionStorage.removeItem("waiter_token");
+    sessionStorage.removeItem("waiter_expires");
+    sessionStorage.removeItem("waiter_name");
+    sessionStorage.removeItem("waiter_id");
+    sessionStorage.removeItem("waiter_restaurant");
+    navigate({ to: "/waiter-login", search });
   }
 
   async function handleClaim(orderId: string) {

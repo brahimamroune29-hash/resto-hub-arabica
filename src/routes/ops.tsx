@@ -11,7 +11,6 @@ import {
   BarChart3,
   Wallet,
   TrendingUp,
-  Heart,
   MessageSquareWarning,
   ClipboardCheck,
 } from "lucide-react";
@@ -39,7 +38,6 @@ type NavItem = {
     | "/ops/expenses"
     | "/ops/reports"
     | "/ops/staff-performance"
-    | "/ops/customers"
     | "/ops/complaints"
     | "/ops/inventory-count"
     ;
@@ -57,7 +55,6 @@ const ALL_NAV: NavItem[] = [
   { to: "/ops/suppliers", label: tx("الموردين"), icon: Truck, roles: ["admin", "operations_manager", "purchasing_manager"] },
   { to: "/ops/employees", label: tx("الموظفين"), icon: Users, roles: ["admin", "hr_manager", "operations_manager"] },
   { to: "/ops/staff-performance", label: tx("أداء الموظفين"), icon: TrendingUp, roles: ["admin", "hr_manager", "operations_manager", "production_manager"] },
-  { to: "/ops/customers", label: tx("العملاء والولاء"), icon: Heart, roles: ["admin", "operations_manager"] },
   { to: "/ops/expenses", label: tx("المصاريف"), icon: Wallet, roles: ["admin", "operations_manager", "purchasing_manager"] },
   { to: "/ops/waste", label: tx("سجل الهدر"), icon: Trash2, roles: ["admin", "operations_manager", "production_manager"] },
   { to: "/ops/complaints", label: tx("الشكاوى"), icon: MessageSquareWarning, roles: ["admin", "operations_manager"] },
@@ -131,7 +128,7 @@ function OpsLayout() {
           <div className="leading-tight hidden lg:block min-w-0">
             <div className="font-bold text-sm truncate text-foreground">{tx("إدارة العمليات")}</div>
             <div className="text-[11px] font-medium text-muted-foreground">
-              {ROLE_LABELS[userRole] ?? "Ops"}
+              {(userRole && ROLE_LABELS[userRole]) || "Ops"}
             </div>
           </div>
         </div>
@@ -185,7 +182,7 @@ function OpsLayout() {
               {current?.label ?? tx("إدارة العمليات")}
             </h2>
             <p className="text-xs text-muted-foreground truncate">
-              {ROLE_LABELS[userRole] ?? tx("إدارة العمليات اليومية")}
+              {(userRole && ROLE_LABELS[userRole]) || tx("إدارة العمليات اليومية")}
             </p>
           </div>
           {userRole === "admin" && (

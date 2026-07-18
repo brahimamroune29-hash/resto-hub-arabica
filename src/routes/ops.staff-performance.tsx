@@ -29,7 +29,10 @@ export const Route = createFileRoute("/ops/staff-performance")({
   component: StaffPerformance,
 });
 
-type Employee = { id: string; name: string; role: string };
+// Orders record the waiter/chef *credential* id (waiter_credentials /
+// individual_chef_credentials), not employees.id — so stats are keyed by
+// credential.
+type StaffCredential = { id: string; name: string; role: string };
 type OrderRow = {
   id: string;
   total: number;
@@ -51,7 +54,7 @@ function daysAgoISO(n: number) {
 function StaffPerformance() {
   useTranslation();
   const { restaurantId } = useRestaurantId();
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [staff, setStaff] = useState<StaffCredential[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [from, setFrom] = useState(daysAgoISO(7));
   const [to, setTo] = useState(todayISO());
@@ -62,10 +65,15 @@ function StaffPerformance() {
     if (!restaurantId) return;
     (async () => {
       setLoading(true);
-      const [{ data: emps }, { data: ords }] = await Promise.all([
+      const [{ data: waiters }, { data: chefs }, { data: ords }] = await Promise.all([
         supabase
-          .from("employees")
-          .select("id, name, role")
+          .from("waiter_credentials")
+          .select("id, name")
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true),
+        supabase
+          .from("individual_chef_credentials")
+          .select("id, name")
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
         supabase
@@ -75,7 +83,10 @@ function StaffPerformance() {
           .gte("created_at", `${from}T00:00:00`)
           .lte("created_at", `${to}T23:59:59`),
       ]);
-      setEmployees((emps as Employee[]) ?? []);
+      setStaff([
+        ...(waiters ?? []).map((w) => ({ ...w, role: tx("نادل") })),
+        ...(chefs ?? []).map((c) => ({ ...c, role: tx("مطبخ") })),
+      ]);
       setOrders((ords as OrderRow[]) ?? []);
       setLoading(false);
     })();
@@ -86,7 +97,7 @@ function StaffPerformance() {
       string,
       { name: string; role: string; orders: number; revenue: number; prepMs: number; prepCount: number }
     >();
-    for (const e of employees) {
+    for (const e of staff) {
       map.set(e.id, { name: e.name, role: e.role, orders: 0, revenue: 0, prepMs: 0, prepCount: 0 });
     }
     for (const o of orders) {
@@ -122,7 +133,7 @@ function StaffPerformance() {
             : s.prepCount > 0,
       )
       .sort((a, b) => b.revenue - a.revenue);
-  }, [employees, orders, role]);
+  }, [staff, orders, role]);
 
   return (
     <div dir="rtl" className="space-y-5">

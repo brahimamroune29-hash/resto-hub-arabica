@@ -44,7 +44,6 @@ async function buildAdminContext(supabase: any, restaurantId: string) {
     complaintsRes,
     recentComplaintsRes,
     employeesRes,
-    customersRes,
     tablesRes,
     reviewsRes,
     suppliersRes,
@@ -56,7 +55,7 @@ async function buildAdminContext(supabase: any, restaurantId: string) {
     supabase
       .from("restaurants")
       .select(
-        "name, menu_theme, brand_color, tagline, whatsapp_number, instagram_url, facebook_url, google_maps_review_url, telegram_chat_id, delivery_enabled, takeaway_enabled, chef_enabled, cashier_enabled, splash_enabled, daily_summary_enabled, setup_completed",
+        "name, menu_theme, brand_color, tagline, whatsapp_number, instagram_url, facebook_url, google_maps_review_url, telegram_chat_id, delivery_enabled, takeaway_enabled, cashier_enabled, splash_enabled, daily_summary_enabled, setup_completed",
       )
       .eq("id", restaurantId)
       .maybeSingle(),
@@ -106,12 +105,6 @@ async function buildAdminContext(supabase: any, restaurantId: string) {
       .from("employees")
       .select("name, role, base_salary, is_active, salary_type")
       .eq("restaurant_id", restaurantId),
-    supabase
-      .from("customers")
-      .select("name, total_spent, total_visits, last_visit_at")
-      .eq("restaurant_id", restaurantId)
-      .order("total_spent", { ascending: false })
-      .limit(10),
     supabase.from("tables").select("table_number").eq("restaurant_id", restaurantId),
     supabase
       .from("reviews")
@@ -226,7 +219,6 @@ async function buildAdminContext(supabase: any, restaurantId: string) {
         features_enabled: {
           delivery: r.delivery_enabled,
           takeaway: r.takeaway_enabled,
-          chef_screen: r.chef_enabled,
           cashier_screen: r.cashier_enabled,
           splash: r.splash_enabled,
           telegram_summary: !!r.telegram_chat_id,
@@ -330,12 +322,6 @@ async function buildAdminContext(supabase: any, restaurantId: string) {
           at: p.paid_at,
         })),
       },
-      top_customers: (customersRes.data ?? []).map((c: any) => ({
-        name: c.name,
-        total_spent: Number(c.total_spent ?? 0),
-        visits: Number(c.total_visits ?? 0),
-        last_visit: c.last_visit_at,
-      })),
       notifications_recent: (notificationsRes.data ?? []).map((n: any) => ({
         kind: n.kind,
         title: n.title,
@@ -373,6 +359,7 @@ export const askAdminBot = createServerFn({ method: "POST" })
     const { supabase, userId } = context as { supabase: any; userId: string };
     const restaurantId = await resolveRestaurantId(supabase, userId);
     if (!restaurantId) throw new Error("لم يتم العثور على مطعم لحسابك");
+
 
     const ctx = await buildAdminContext(supabase, restaurantId);
 

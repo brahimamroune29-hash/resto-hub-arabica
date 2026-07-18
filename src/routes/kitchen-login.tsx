@@ -4,15 +4,14 @@ import { ChefHat, ArrowRight, Loader2, ArrowLeft, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useServerFn } from "@tanstack/react-start";
-import { verifyChefPin, getPublicChefLoginInfo } from "@/lib/chef.functions";
 import { getPublicChefList, verifyIndividualChefPin } from "@/lib/individual-chef.functions";
 import { useTranslation } from "react-i18next";
 
 export const Route = createFileRoute("/kitchen-login")({
   validateSearch: (s) => ({
-    r: typeof s.r === "string" ? s.r : "",
-    rid: typeof s.rid === "string" ? s.rid : "",
-    mode: s.mode === "individual" ? "individual" : "shared",
+    // `r` is the legacy shared-login param — accept it as an alias so old
+    // printed/saved kitchen links keep working.
+    rid: typeof s.rid === "string" && s.rid ? s.rid : typeof s.r === "string" ? s.r : "",
   }),
   component: Page,
 });
@@ -99,14 +98,9 @@ function PinInput({
 
 function Page() {
   const { t } = useTranslation();
-  // Support both ?r= (shared legacy) and ?rid= (individual)
-  const { r: legacyRid, rid, mode } = Route.useSearch();
-  const restaurantId = rid || legacyRid;
-  const isIndividual = mode === "individual" && !!rid;
+  const { rid: restaurantId } = Route.useSearch();
 
   const navigate = useNavigate();
-  const verifyShared = useServerFn(verifyChefPin);
-  const fetchSharedInfo = useServerFn(getPublicChefLoginInfo);
   const fetchChefList = useServerFn(getPublicChefList);
   const verifyIndividual = useServerFn(verifyIndividualChefPin);
 
@@ -115,7 +109,6 @@ function Page() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Individual mode state
   type ChefItem = { id: string; name: string };
   const [chefs, setChefs] = useState<ChefItem[]>([]);
   const [selectedChef, setSelectedChef] = useState<ChefItem | null>(null);
@@ -123,47 +116,19 @@ function Page() {
 
   useEffect(() => {
     if (!restaurantId) { setEnabled(false); return; }
-
-    if (isIndividual) {
-      setLoadingList(true);
-      fetchChefList({ data: { restaurantId } })
-        .then((res) => {
-          if (!res.found) { toast.error(t("common.restaurantNotFound")); setEnabled(false); return; }
-          setRestaurantName(res.name);
-          setLogoUrl(res.logo_url);
-          setChefs(res.chefs);
-          setEnabled(res.chefs.length > 0);
-        })
-        .catch(() => { toast.error(t("common.restaurantNotFound")); setEnabled(false); })
-        .finally(() => setLoadingList(false));
-    } else {
-      fetchSharedInfo({ data: { restaurantId } })
-        .then((info) => {
-          if (!info.found) { toast.error(t("common.restaurantNotFound")); setEnabled(false); return; }
-          setRestaurantName(info.name);
-          setEnabled(info.enabled);
-        })
-        .catch(() => { toast.error(t("common.restaurantNotFound")); setEnabled(false); });
-    }
-  }, [restaurantId, isIndividual]);
-
-  async function submitShared(pin: string) {
-    if (submitting) return;
-    if (!restaurantId) { toast.error(t("common.invalidLink")); return; }
-    setSubmitting(true);
-    try {
-      const res = await verifyShared({ data: { restaurantId, pin } });
-      localStorage.setItem("chef_token", res.token);
-      localStorage.setItem("chef_expires", res.expiresAt);
-      localStorage.setItem("chef_restaurant", JSON.stringify(res.restaurant));
-      toast.success(t("common.welcome"));
-      navigate({ to: "/kitchen-screen" });
-    } catch (e) {
-      toast.error((e as Error).message || t("common.wrongPin"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    setLoadingList(true);
+    fetchChefList({ data: { restaurantId } })
+      .then((res) => {
+        if (!res.found) { toast.error(t("common.restaurantNotFound")); setEnabled(false); return; }
+        setRestaurantName(res.name);
+        setLogoUrl(res.logo_url);
+        setChefs(res.chefs);
+        setEnabled(res.chefs.length > 0);
+      })
+      .catch(() => { toast.error(t("common.restaurantNotFound")); setEnabled(false); })
+      .finally(() => setLoadingList(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId]);
 
   async function submitIndividual(pin: string) {
     if (!selectedChef) return;
@@ -171,13 +136,13 @@ function Page() {
     setSubmitting(true);
     try {
       const res = await verifyIndividual({ data: { chefId: selectedChef.id, pin } });
-      localStorage.setItem("individual_chef_token", res.token);
-      localStorage.setItem("individual_chef_expires", res.expiresAt);
-      localStorage.setItem("individual_chef_name", res.chefName);
-      localStorage.setItem("individual_chef_id", res.chefId);
-      localStorage.setItem("individual_chef_restaurant", JSON.stringify(res.restaurant));
+      sessionStorage.setItem("individual_chef_token", res.token);
+      sessionStorage.setItem("individual_chef_expires", res.expiresAt);
+      sessionStorage.setItem("individual_chef_name", res.chefName);
+      sessionStorage.setItem("individual_chef_id", res.chefId);
+      sessionStorage.setItem("individual_chef_restaurant", JSON.stringify(res.restaurant));
       toast.success(`أهلاً ${res.chefName}`);
-      navigate({ to: "/kitchen-screen", search: { mode: "individual" } as any });
+      navigate({ to: "/kitchen-screen" });
     } catch (e) {
       toast.error((e as Error).message || t("common.wrongPin"));
     } finally {
@@ -196,9 +161,7 @@ function Page() {
               <ChefHat className="w-10 h-10 text-primary" />
             </div>
           )}
-          <h1 className="text-2xl font-bold">
-            {isIndividual ? "دخول المطبخ" : t("kitchen.title")}
-          </h1>
+          <h1 className="text-2xl font-bold">دخول المطبخ</h1>
           {restaurantName && <p className="text-sm text-muted-foreground mt-1">{restaurantName}</p>}
         </div>
 
@@ -208,32 +171,35 @@ function Page() {
           </div>
         )}
 
-        {/* Individual mode: chef selection then PIN */}
-        {isIndividual && !loadingList && (
+        {!loadingList && enabled === false && (
+          <div className="rounded-xl bg-destructive/10 text-destructive text-sm p-4 text-center leading-6">
+            {!restaurantId ? (
+              <>الرابط غير صحيح. استخدم رابط شاشة المطبخ من صفحة الإعدادات.</>
+            ) : (
+              <>لا توجد حسابات طهاة — أضفها من لوحة التحكم (الإعدادات ← المطبخ).</>
+            )}
+          </div>
+        )}
+
+        {!loadingList && enabled && (
           <>
             {!selectedChef ? (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground text-center">اختر حسابك</p>
-                {chefs.length === 0 ? (
-                  <p className="text-sm text-center text-muted-foreground py-4">
-                    لا توجد حسابات طهاة — أضفها من لوحة التحكم
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {chefs.map((chef) => (
-                      <button
-                        key={chef.id}
-                        onClick={() => setSelectedChef(chef)}
-                        className="w-full flex items-center gap-3 rounded-xl border-2 border-muted hover:border-primary px-4 py-3 transition-colors text-right"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-primary" />
-                        </div>
-                        <span className="font-medium">{chef.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="space-y-2">
+                  {chefs.map((chef) => (
+                    <button
+                      key={chef.id}
+                      onClick={() => setSelectedChef(chef)}
+                      className="w-full flex items-center gap-3 rounded-xl border-2 border-muted hover:border-primary px-4 py-3 transition-colors text-right"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <User className="w-5 h-5 text-primary" />
+                      </div>
+                      <span className="font-medium">{chef.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -250,23 +216,6 @@ function Page() {
                 </div>
                 <p className="text-sm text-muted-foreground text-center">أدخل رمز PIN الخاص بك</p>
                 <PinInput onSubmit={submitIndividual} submitting={submitting} length={6} />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Shared mode: direct PIN */}
-        {!isIndividual && !loadingList && (
-          <>
-            <p className="text-sm text-muted-foreground text-center">{t("common.enterPin")}</p>
-            <PinInput onSubmit={submitShared} submitting={submitting} disabled={enabled === false} />
-            {enabled === false && (
-              <div className="rounded-xl bg-destructive/10 text-destructive text-sm p-4 text-center leading-6">
-                {!restaurantId ? (
-                  <>الرابط غير صحيح. استخدم رابط شاشة المطبخ من صفحة الإعدادات.</>
-                ) : (
-                  <>{t("kitchen.disabled")}<br />{t("kitchen.enableHint")}</>
-                )}
               </div>
             )}
           </>

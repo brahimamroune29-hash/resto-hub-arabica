@@ -21,21 +21,25 @@ function checkCronAuth(request: Request): boolean {
   return constantTimeEq(provided, cronSecret);
 }
 
+async function handleCron(request: Request): Promise<Response> {
+  if (!checkCronAuth(request)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  try {
+    const res = await runDailySummaryForAll();
+    return Response.json({ ok: true, ...res });
+  } catch (err) {
+    console.error("[daily-summary hook]", err);
+    return new Response("error", { status: 500 });
+  }
+}
+
 export const Route = createFileRoute("/api/public/hooks/daily-summary")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        if (!checkCronAuth(request)) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-        try {
-          const res = await runDailySummaryForAll();
-          return Response.json({ ok: true, ...res });
-        } catch (err) {
-          console.error("[daily-summary hook]", err);
-          return new Response("error", { status: 500 });
-        }
-      },
+      // Vercel Cron invokes this path with GET (Authorization: Bearer CRON_SECRET)
+      GET: ({ request }) => handleCron(request),
+      POST: ({ request }) => handleCron(request),
     },
   },
 });

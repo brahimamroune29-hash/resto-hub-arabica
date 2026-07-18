@@ -84,53 +84,74 @@ function OpsOverview() {
       const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const periodMonth = new Date(now.getFullYear(), now.getMonth(), 1)
         .toISOString()
-        .slice(0, 10);
+        .slice(0, 7); // YYYY-MM, matches employee_salary_payments.month
+
+      // Only fetch data for KPIs this role is allowed to see — hiding the
+      // cards alone would still expose financials in the network tab.
+      const hidden = HIDDEN_KPIS[role] ?? [];
+      const showRevenue = !hidden.includes("إيرادات هذا الشهر");
+      const showNet = !hidden.includes("صافي الربح");
+      const showExpenses = !hidden.includes("مصاريف هذا الشهر");
+      const showPendingSalaries = !hidden.includes("رواتب معلقة");
+      const empty = Promise.resolve({ data: [] as never[] });
 
       const [poRes, salRes, ingRes, empRes, paidRes, wasteRes, ordersRes, monthWasteRes] = await Promise.all([
-        supabase
-          .from("purchase_orders")
-          .select("total")
-          .eq("restaurant_id", rid)
-          .gte("created_at", monthStart),
-        supabase
-          .from("salary_payments")
-          .select("amount")
-          .eq("restaurant_id", rid)
-          .gte("paid_at", monthStart),
+        showExpenses || showNet
+          ? supabase
+              .from("purchase_orders")
+              .select("total")
+              .eq("restaurant_id", rid)
+              .gte("created_at", monthStart)
+          : empty,
+        showExpenses || showNet
+          ? supabase
+              .from("employee_salary_payments")
+              .select("net_salary")
+              .eq("restaurant_id", rid)
+              .gte("paid_at", monthStart)
+          : empty,
         supabase
           .from("ingredients")
           .select("id,current_stock,alert_threshold")
           .eq("restaurant_id", rid),
-        supabase
-          .from("employees")
-          .select("id")
-          .eq("restaurant_id", rid)
-          .eq("is_active", true),
-        supabase
-          .from("salary_payments")
-          .select("employee_id")
-          .eq("restaurant_id", rid)
-          .eq("period_month", periodMonth),
+        showPendingSalaries
+          ? supabase
+              .from("employees")
+              .select("id")
+              .eq("restaurant_id", rid)
+              .eq("is_active", true)
+          : empty,
+        showPendingSalaries
+          ? supabase
+              .from("employee_salary_payments")
+              .select("employee_id")
+              .eq("restaurant_id", rid)
+              .eq("month", periodMonth)
+          : empty,
         supabase
           .from("waste_logs")
           .select("cost")
           .eq("restaurant_id", rid)
           .gte("created_at", weekStart),
-        supabase
-          .from("orders")
-          .select("total")
-          .eq("restaurant_id", rid)
-          .eq("status", "paid")
-          .gte("created_at", monthStart),
-        supabase
-          .from("waste_logs")
-          .select("cost")
-          .eq("restaurant_id", rid)
-          .gte("created_at", monthStart),
+        showRevenue || showNet
+          ? supabase
+              .from("orders")
+              .select("total")
+              .eq("restaurant_id", rid)
+              .eq("status", "paid")
+              .gte("created_at", monthStart)
+          : empty,
+        showNet
+          ? supabase
+              .from("waste_logs")
+              .select("cost")
+              .eq("restaurant_id", rid)
+              .gte("created_at", monthStart)
+          : empty,
       ]);
 
       const purchases = (poRes.data ?? []).reduce((s, x) => s + Number(x.total || 0), 0);
-      const salaries = (salRes.data ?? []).reduce((s, x) => s + Number(x.amount || 0), 0);
+      const salaries = (salRes.data ?? []).reduce((s, x) => s + Number(x.net_salary || 0), 0);
       const lowStock = (ingRes.data ?? []).filter(
         (i) => Number(i.current_stock) < Number(i.alert_threshold),
       ).length;

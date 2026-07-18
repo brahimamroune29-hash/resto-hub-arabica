@@ -25,7 +25,10 @@ function createSupabaseAdminClient() {
       persistSession: false,
       autoRefreshToken: false,
     },
-    realtime: { transport: ws },
+    // ws's constructor type doesn't match WebSocketLikeConstructor; without the
+    // cast this single option collapses the client's Database generic and breaks
+    // type inference for every query in the codebase.
+    realtime: { transport: ws as unknown as typeof WebSocket },
   });
 }
 

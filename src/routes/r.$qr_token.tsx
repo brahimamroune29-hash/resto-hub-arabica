@@ -19,8 +19,6 @@ import {
   UtensilsCrossed,
   WifiOff,
   MessageSquareWarning,
-  Sparkles,
-  Send,
   Loader2,
   History,
 } from "lucide-react";
@@ -33,9 +31,7 @@ import {
   type OrderStatusInfo,
 } from "@/lib/order.functions";
 import { formatDZD } from "@/lib/restaurant";
-import { askMenuBot } from "@/lib/menu-chat.functions";
 import { submitComplaint } from "@/lib/complaint.functions";
-import { useServerFn } from "@tanstack/react-start";
 import { getMenuTheme, getMenuColors, parseMenuAppearance, type MenuLayoutId } from "@/lib/menu-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -148,41 +144,6 @@ function Page() {
     description: "",
   });
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
-
-  // AI menu chat
-  const askBot = useServerFn(askMenuBot);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (chatOpen) {
-      setTimeout(() => {
-        chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
-      }, 50);
-    }
-  }, [chatMessages, chatLoading, chatOpen]);
-
-  const sendChat = useCallback(async (text?: string) => {
-    const content = (text ?? chatInput).trim();
-    if (!content || chatLoading || !qr_token) return;
-    const next = [...chatMessages, { role: "user" as const, content }];
-    setChatMessages(next);
-    setChatInput("");
-    setChatLoading(true);
-    try {
-      const res = await askBot({ data: { qr_token, messages: next.slice(-10) } });
-      setChatMessages([...next, { role: "assistant", content: res.reply }]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "خطأ";
-      toast.error(msg);
-      setChatMessages(next);
-    } finally {
-      setChatLoading(false);
-    }
-  }, [askBot, chatInput, chatLoading, chatMessages, qr_token]);
 
   // Restore active order on mount
   useEffect(() => {
@@ -859,120 +820,6 @@ function Page() {
         <MessageSquareWarning className="w-5 h-5" />
       </button>
 
-      {/* Floating AI assistant button */}
-      <button
-        onClick={() => setChatOpen(true)}
-        className="fixed bottom-40 end-4 z-30 bg-gradient-to-br from-primary to-primary/70 text-primary-foreground rounded-full w-14 h-14 flex items-center justify-center shadow-xl hover:scale-105 transition"
-        aria-label="مساعد المنيو الذكي"
-        title="اسأل المساعد الذكي"
-      >
-        <Sparkles className="w-6 h-6" />
-      </button>
-
-      {/* AI Chat Sheet */}
-      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
-        <SheetContent side="bottom" className="h-[85vh] flex flex-col p-0" dir="rtl">
-          <SheetHeader className="px-4 py-3 border-b bg-gradient-to-l from-primary/10 to-transparent shrink-0">
-            <SheetTitle className="flex items-center gap-2 text-right">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-sm font-bold">مساعد المنيو الذكي</div>
-                <div className="text-[11px] font-normal text-muted-foreground">اسألني ايش تحب تاكل اليوم</div>
-              </div>
-            </SheetTitle>
-          </SheetHeader>
-
-          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-            {chatMessages.length === 0 && (
-              <div className="space-y-3 text-center py-6">
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground">
-                  <Sparkles className="w-7 h-7" />
-                </div>
-                <div className="text-sm text-neutral-600 dark:text-neutral-300">
-                  مرحباً! اسألني عن أي طبق أو خليني أنصحك
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center pt-2">
-                  {[
-                    "إيش تنصحني؟",
-                    "عندكم شي حار؟",
-                    "أرخص طبق عندكم؟",
-                    "أكلة خفيفة من فضلك",
-                  ].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => sendChat(s)}
-                      className="text-xs px-3 py-2 rounded-full border border-border hover:bg-accent transition"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {chatMessages.map((m, i) => (
-              <div key={i} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                    m.role === "user"
-                      ? "bg-neutral-200 dark:bg-neutral-700"
-                      : "bg-gradient-to-br from-primary to-primary/60 text-primary-foreground"
-                  }`}
-                >
-                  {m.role === "user" ? "👤" : <Sparkles className="w-3.5 h-3.5" />}
-                </div>
-                <div
-                  className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-neutral-100 dark:bg-neutral-800 text-foreground"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              </div>
-            ))}
-
-            {chatLoading && (
-              <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl px-3.5 py-2 text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> يفكر...
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t p-3 flex gap-2 shrink-0 bg-background">
-            <Input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendChat();
-                }
-              }}
-              placeholder="اكتب سؤالك..."
-              disabled={chatLoading}
-              className="flex-1"
-            />
-            <Button
-              onClick={() => sendChat()}
-              disabled={chatLoading || !chatInput.trim() || !isOnline}
-              size="icon"
-              className="shrink-0"
-            >
-              {chatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
       <Dialog open={complaintOpen} onOpenChange={setComplaintOpen}>
         <DialogContent dir="rtl" className="max-w-md">
           <DialogHeader>
@@ -1273,6 +1120,7 @@ const STATUS_STEPS: {
   { key: "received", label: "تم الاستلام", icon: Receipt },
   { key: "preparing", label: "قيد التحضير", icon: ChefHat },
   { key: "ready", label: "جاهز", icon: Bell },
+  { key: "served", label: "تم التقديم", icon: UtensilsCrossed },
   { key: "paid", label: "مدفوع", icon: Wallet },
 ];
 
@@ -1284,8 +1132,10 @@ function statusIndex(s: OrderStatusInfo["status"]): number {
       return 1;
     case "ready":
       return 2;
-    case "paid":
+    case "served":
       return 3;
+    case "paid":
+      return 4;
   }
 }
 
@@ -1329,6 +1179,7 @@ function OrderTrackingScreen({
         if (prev && prev !== res.status) {
           if (res.status === "preparing") toast("طلبك قيد التحضير 👨‍🍳");
           else if (res.status === "ready") toast.success("طلبك جاهز! 🎉");
+          else if (res.status === "served") toast.success("تم تقديم طلبك، بالصحة! 🍽️");
           else if (res.status === "paid") toast("شكراً لك على زيارتنا");
         }
         lastStatusRef.current = res.status;
@@ -1458,8 +1309,8 @@ function OrderTrackingScreen({
           <div className="mt-4 space-y-3">
             {ordersHistory.map((o) => {
               const isActive = o.order_id === orderId;
-              const statusLabel = o.status === "paid" ? "مدفوع ✅" : o.status === "ready" ? "جاهز 🔔" : o.status === "preparing" ? "قيد التحضير 👨‍🍳" : "تم الاستلام ⏳";
-              const statusColor = o.status === "paid" ? "text-green-600" : o.status === "ready" ? "text-amber-500" : o.status === "preparing" ? "text-blue-500" : "text-muted-foreground";
+              const statusLabel = o.status === "paid" ? "مدفوع ✅" : o.status === "served" ? "تم التقديم 🍽️" : o.status === "ready" ? "جاهز 🔔" : o.status === "preparing" ? "قيد التحضير 👨‍🍳" : "تم الاستلام ⏳";
+              const statusColor = o.status === "paid" ? "text-green-600" : o.status === "served" ? "text-violet-500" : o.status === "ready" ? "text-amber-500" : o.status === "preparing" ? "text-blue-500" : "text-muted-foreground";
               const codeStr = o.daily_number != null ? String(o.daily_number).padStart(3, "0") : "—";
               const time = new Date(o.created_at).toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" });
               return (

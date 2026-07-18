@@ -9,6 +9,8 @@ import {
   Calculator,
   Receipt,
   Printer,
+  FileBarChart,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,8 @@ import {
   cashierMarkPaid,
   cashierLogout,
   cashierListReady,
+  cashierZReport,
+  type ZReport,
 } from "@/lib/cashier.functions";
 import { formatDZD } from "@/lib/restaurant";
 import { supabase } from "@/integrations/supabase/client";
@@ -59,16 +63,32 @@ function Page() {
   const fmtOrderNo = (n: number | null | undefined) =>
     n != null ? String(n).padStart(3, "0") : "—";
   const [lastPaid, setLastPaid] = useState<ReadyOrder | null>(null);
+  const zFn = useServerFn(cashierZReport);
+  const [zReport, setZReport] = useState<ZReport | null>(null);
+  const [zLoading, setZLoading] = useState(false);
+
+  async function openZReport() {
+    if (!token) return;
+    setZLoading(true);
+    try {
+      const r = await zFn({ data: { token } });
+      setZReport(r);
+    } catch (e) {
+      toast.error((e as Error).message || "تعذّر جلب تقرير اليوم");
+    } finally {
+      setZLoading(false);
+    }
+  }
 
   // Auth check
   useEffect(() => {
-    const t = localStorage.getItem("cashier_token");
-    const exp = localStorage.getItem("cashier_expires");
+    const t = sessionStorage.getItem("cashier_token");
+    const exp = sessionStorage.getItem("cashier_expires");
     if (!t || !exp || new Date(exp) < new Date()) {
-      const r = localStorage.getItem("cashier_restaurant");
+      const r = sessionStorage.getItem("cashier_restaurant");
       const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-      localStorage.removeItem("cashier_token");
-      localStorage.removeItem("cashier_expires");
+      sessionStorage.removeItem("cashier_token");
+      sessionStorage.removeItem("cashier_expires");
       navigate({ to: "/cashier-login", search: { r: rid } });
       return;
     }
@@ -76,8 +96,8 @@ function Page() {
     ctxFn({ data: { token: t } })
       .then((res) => setRestaurant(res.restaurant))
       .catch(() => {
-        localStorage.removeItem("cashier_token");
-        const r = localStorage.getItem("cashier_restaurant");
+        sessionStorage.removeItem("cashier_token");
+        const r = sessionStorage.getItem("cashier_restaurant");
         const rid = r ? (JSON.parse(r) as Restaurant).id : "";
         navigate({ to: "/cashier-login", search: { r: rid } });
       });
@@ -249,10 +269,10 @@ function Page() {
         // ignore
       }
     }
-    const r = localStorage.getItem("cashier_restaurant");
+    const r = sessionStorage.getItem("cashier_restaurant");
     const rid = r ? (JSON.parse(r) as Restaurant).id : "";
-    localStorage.removeItem("cashier_token");
-    localStorage.removeItem("cashier_expires");
+    sessionStorage.removeItem("cashier_token");
+    sessionStorage.removeItem("cashier_expires");
     navigate({ to: "/cashier-login", search: { r: rid } });
   }
 
@@ -312,11 +332,95 @@ function Page() {
           </Button>
         </div>
 
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void openZReport()}
+          disabled={zLoading}
+          className="gap-1.5 shrink-0"
+        >
+          {zLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileBarChart className="w-4 h-4" />}
+          <span className="hidden sm:inline">إغلاق اليوم</span>
+        </Button>
+
         <Button variant="outline" size="sm" onClick={onLogout} className="gap-1.5 shrink-0">
           <LogOut className="w-4 h-4" />
           <span className="hidden sm:inline">خروج</span>
         </Button>
       </header>
+
+      {zReport && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setZReport(null)}
+        >
+          <div
+            className="bg-background rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-lg flex items-center gap-2">
+                <FileBarChart className="w-5 h-5 text-primary" />
+                إغلاق اليوم — {zReport.dayKey}
+              </h2>
+              <button onClick={() => setZReport(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="rounded-xl bg-primary/10 p-4 text-center">
+              <div className="text-3xl font-extrabold text-primary tabular-nums">
+                {formatDZD(zReport.totalRevenue)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">إجمالي مبيعات اليوم (المدفوعة)</div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg border border-border p-2.5">
+                <div className="font-bold tabular-nums">{zReport.totalOrders}</div>
+                <div className="text-[11px] text-muted-foreground">طلب مدفوع</div>
+              </div>
+              <div className="rounded-lg border border-border p-2.5">
+                <div className="font-bold tabular-nums">{formatDZD(zReport.avgTicket)}</div>
+                <div className="text-[11px] text-muted-foreground">متوسط الفاتورة</div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-sm">
+              {(
+                [
+                  ["dine_in", "في الصالة"],
+                  ["takeaway", "سفري"],
+                  ["delivery", "توصيل"],
+                ] as const
+              ).map(([k, label]) => (
+                <div key={k} className="flex items-center justify-between border-b border-border/50 pb-1.5 last:border-0">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="tabular-nums">
+                    {zReport.byType[k].count} طلب · {formatDZD(zReport.byType[k].revenue)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {zReport.unpaidCount > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                ⚠️ {zReport.unpaidCount} طلب ما زال مفتوحاً (غير مدفوع) بقيمة {formatDZD(zReport.unpaidTotal)}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button className="flex-1 gap-1.5" onClick={() => printZReport(zReport, restaurant.name)}>
+                <Printer className="w-4 h-4" />
+                طباعة
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setZReport(null)}>
+                إغلاق
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 p-3 md:p-6">
         <div className="max-w-5xl mx-auto">
@@ -467,6 +571,84 @@ function Page() {
       </AnimatePresence>
     </div>
   );
+}
+
+function printZReport(z: ZReport, restaurantName: string) {
+  const w = window.open("", "_blank", "width=420,height=640");
+  if (!w) return;
+  const typeRows = (
+    [
+      ["في الصالة", z.byType.dine_in],
+      ["سفري", z.byType.takeaway],
+      ["توصيل", z.byType.delivery],
+    ] as const
+  )
+    .map(
+      ([label, v]) => `
+      <tr>
+        <td style="padding:4px 0;">${label}</td>
+        <td style="text-align:center; padding:4px 0;">${v.count}</td>
+        <td style="text-align:left; padding:4px 0;">${v.revenue.toLocaleString("en-US")} دج</td>
+      </tr>`,
+    )
+    .join("");
+  const html = `<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8" />
+<title>إغلاق اليوم - ${z.dayKey}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  body { font-family: 'Cairo', system-ui, sans-serif; width: 72mm; margin: 0 auto; color: #000; }
+  .center { text-align: center; }
+  .name { font-size: 18px; font-weight: 800; }
+  .muted { color: #555; font-size: 12px; }
+  hr { border: none; border-top: 1px dashed #000; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .total { font-size: 16px; font-weight: 800; display: flex; justify-content: space-between; }
+  .row { font-size: 13px; display: flex; justify-content: space-between; padding: 2px 0; }
+</style>
+</head>
+<body>
+  <div class="center">
+    <div class="name">${escapeHtml(restaurantName)}</div>
+    <div class="muted">تقرير إغلاق اليوم (Z)</div>
+    <div class="muted">${z.dayKey} — طبع ${new Date().toLocaleTimeString("ar-DZ", { hour: "2-digit", minute: "2-digit" })}</div>
+  </div>
+  <hr />
+  <div class="total"><span>إجمالي المبيعات</span><span>${z.totalRevenue.toLocaleString("en-US")} دج</span></div>
+  <div class="row"><span>عدد الطلبات المدفوعة</span><span>${z.totalOrders}</span></div>
+  <div class="row"><span>متوسط الفاتورة</span><span>${z.avgTicket.toLocaleString("en-US")} دج</span></div>
+  <hr />
+  <table>
+    <thead>
+      <tr style="border-bottom:1px solid #000;">
+        <th style="text-align:right; padding:4px 0;">النوع</th>
+        <th style="text-align:center; padding:4px 0;">طلبات</th>
+        <th style="text-align:left; padding:4px 0;">المبلغ</th>
+      </tr>
+    </thead>
+    <tbody>${typeRows}</tbody>
+  </table>
+  ${
+    z.unpaidCount > 0
+      ? `<hr /><div class="row"><span>⚠️ طلبات مفتوحة غير مدفوعة</span><span>${z.unpaidCount} · ${z.unpaidTotal.toLocaleString("en-US")} دج</span></div>`
+      : ""
+  }
+  <hr />
+  <div class="center muted">MenuFlow</div>
+  <script>
+    window.onload = function() {
+      window.focus();
+      window.print();
+      setTimeout(function(){ window.close(); }, 300);
+    };
+  </script>
+</body>
+</html>`;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 function escapeHtml(s: string): string {

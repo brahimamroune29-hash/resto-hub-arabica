@@ -61,7 +61,7 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
           persistSession: false,
           autoRefreshToken: false,
         },
-        realtime: { transport: ws },
+        realtime: { transport: ws as unknown as typeof WebSocket },
       }
     );
 

@@ -122,11 +122,11 @@ function Page() {
     setSubmitting(true);
     try {
       const res = await verify({ data: { waiterId: selected.id, pin } });
-      localStorage.setItem("waiter_token", res.token);
-      localStorage.setItem("waiter_expires", res.expiresAt);
-      localStorage.setItem("waiter_name", res.waiterName);
-      localStorage.setItem("waiter_id", res.waiterId);
-      localStorage.setItem("waiter_restaurant", JSON.stringify(res.restaurant));
+      sessionStorage.setItem("waiter_token", res.token);
+      sessionStorage.setItem("waiter_expires", res.expiresAt);
+      sessionStorage.setItem("waiter_name", res.waiterName);
+      sessionStorage.setItem("waiter_id", res.waiterId);
+      sessionStorage.setItem("waiter_restaurant", JSON.stringify(res.restaurant));
       toast.success(`أهلاً ${res.waiterName}`);
       navigate({ to: "/waiter-screen" });
     } catch (e) {

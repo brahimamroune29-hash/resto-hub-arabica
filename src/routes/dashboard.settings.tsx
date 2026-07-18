@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import { useServerFn } from "@tanstack/react-start";
 import { setCashierPin, disableCashier, getCashierStatus } from "@/lib/cashier.functions";
-import { setChefPin, disableChef, getChefStatus } from "@/lib/chef.functions";
 import {
   listIndividualChefs,
   addIndividualChef,
@@ -123,6 +123,7 @@ function Page() {
   const [inviteRole, setInviteRole] = useState<ManagerRole>("staff");
   const [inviting, setInviting] = useState(false);
   const [staffPwEdit, setStaffPwEdit] = useState<{ userId: string; email: string } | null>(null);
+  const [staffToRemove, setStaffToRemove] = useState<string | null>(null);
   const [staffNewPw, setStaffNewPw] = useState("");
   const [savingStaffPw, setSavingStaffPw] = useState(false);
   // Cashier
@@ -134,15 +135,6 @@ function Page() {
   const [savingPin, setSavingPin] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState<string | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
-  // Chef
-  const setChefPinFn = useServerFn(setChefPin);
-  const disableChefFn = useServerFn(disableChef);
-  const getChefStatusFn = useServerFn(getChefStatus);
-  const [chefEnabled, setChefEnabled] = useState(false);
-  const [chefPinInput, setChefPinInput] = useState("");
-  const [savingChefPin, setSavingChefPin] = useState(false);
-  const [showChefPinDialog, setShowChefPinDialog] = useState<string | null>(null);
-  const [confirmDisableChef, setConfirmDisableChef] = useState(false);
   const createStaffFn = useServerFn(createStaffAccount);
   const deleteStaffFn = useServerFn(deleteStaffAccount);
   const updateStaffPwFn = useServerFn(updateStaffPassword);
@@ -591,11 +583,10 @@ function Page() {
       try {
         const { data: rest } = await supabase
           .from("restaurants")
-          .select("cashier_enabled, chef_enabled, menu_theme")
+          .select("cashier_enabled, menu_theme")
           .eq("id", data.id)
           .maybeSingle();
         setCashierEnabled(!!rest?.cashier_enabled);
-        setChefEnabled(!!rest?.chef_enabled);
         if (rest?.menu_theme) {
           const appearance = parseMenuAppearance(rest.menu_theme);
           setMenuTheme(appearance.theme);
@@ -702,45 +693,6 @@ function Page() {
 
   const cashierUrl =
     typeof window !== "undefined" && r ? `${window.location.origin}/cashier-login?r=${r.id}` : "";
-  const chefUrl =
-    typeof window !== "undefined" && r ? `${window.location.origin}/kitchen-login?r=${r.id}` : "";
-
-  function genChefPin() {
-    setChefPinInput(Math.floor(1000 + Math.random() * 9000).toString());
-  }
-
-  async function onSaveChefPin() {
-    if (!/^\d{4}$/.test(chefPinInput)) {
-      toast.error("يجب أن يكون الرمز 4 أرقام");
-      return;
-    }
-    setSavingChefPin(true);
-    try {
-      const headers = await getServerAuthHeaders();
-      await setChefPinFn({ data: { pin: chefPinInput }, headers });
-      setChefEnabled(true);
-      setShowChefPinDialog(chefPinInput);
-      setChefPinInput("");
-      toast.success("تم حفظ رمز المطبخ");
-    } catch (e) {
-      toast.error((e as Error).message || "فشل الحفظ");
-    } finally {
-      setSavingChefPin(false);
-    }
-  }
-
-  async function onDisableChef() {
-    try {
-      const headers = await getServerAuthHeaders();
-      await disableChefFn({ headers });
-      setChefEnabled(false);
-      setConfirmDisableChef(false);
-      toast.success("تم تعطيل نظام المطبخ");
-    } catch (e) {
-      toast.error((e as Error).message || "فشل التعطيل");
-    }
-  }
-  void getChefStatusFn;
 
   async function onEnableDelivery() {
     setDeliveryBusy(true);
@@ -1012,7 +964,6 @@ function Page() {
   };
 
   const onRemoveStaff = async (userId: string) => {
-    if (!confirm("هل تريد حذف هذا الحساب نهائياً؟")) return;
     try {
       const headers = await getServerAuthHeaders();
       await deleteStaffFn({ data: { staffUserId: userId }, headers });
@@ -1700,144 +1651,6 @@ function Page() {
         </DialogContent>
       </Dialog>
 
-      <div className="rounded-2xl bg-background border p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <ChefHat className="w-5 h-5 text-primary" />
-          <h3 className="text-lg font-bold">نظام المطبخ</h3>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          فعّل شاشة مطبخ منفصلة بـ PIN — يستخدمها الطباخ على تابلت في المطبخ
-        </p>
-
-        {chefEnabled ? (
-          <>
-            <div className="rounded-xl bg-green-50 border border-green-200 p-3 flex items-center gap-2 text-sm text-green-800">
-              <Power className="w-4 h-4" />
-              نظام المطبخ مفعّل
-            </div>
-
-            {r && (
-              <div className="space-y-2">
-                <Label>رابط شاشة المطبخ</Label>
-                <div className="flex gap-2">
-                  <Input value={chefUrl} readOnly dir="ltr" className="font-mono text-xs" />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      navigator.clipboard.writeText(chefUrl);
-                      toast.success("تم نسخ الرابط");
-                    }}
-                    aria-label="copy"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>تغيير PIN</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={chefPinInput}
-                  onChange={(e) => setChefPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="• • • •"
-                  className="text-center text-2xl tracking-[0.5em] font-bold"
-                />
-                <Button variant="outline" onClick={genChefPin} aria-label="random">
-                  <Shuffle className="w-4 h-4" />
-                </Button>
-                <Button onClick={onSaveChefPin} disabled={savingChefPin || chefPinInput.length !== 4}>
-                  {savingChefPin && <Loader2 className="w-4 h-4 animate-spin ms-2" />}
-                  تحديث
-                </Button>
-              </div>
-            </div>
-
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDisableChef(true)}
-              className="border-red-300 text-red-700 hover:bg-red-50"
-            >
-              <Power className="w-4 h-4 ms-2" />
-              تعطيل النظام
-            </Button>
-          </>
-        ) : (
-          <div className="space-y-2">
-            <Label>أدخل PIN لتفعيل النظام</Label>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                value={chefPinInput}
-                onChange={(e) => setChefPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="4 أرقام"
-                className="text-center text-2xl tracking-[0.5em] font-bold"
-              />
-              <Button variant="outline" onClick={genChefPin} aria-label="random">
-                <Shuffle className="w-4 h-4" />
-              </Button>
-              <Button onClick={onSaveChefPin} disabled={savingChefPin || chefPinInput.length !== 4}>
-                {savingChefPin && <Loader2 className="w-4 h-4 animate-spin ms-2" />}
-                تفعيل
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <Dialog open={!!showChefPinDialog} onOpenChange={(o) => !o && setShowChefPinDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>احفظ هذا الرمز</DialogTitle>
-            <DialogDescription>لن تتمكن من رؤيته مرة أخرى.</DialogDescription>
-          </DialogHeader>
-          <div className="text-center py-6">
-            <div className="text-6xl font-bold tracking-widest text-primary">{showChefPinDialog}</div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (showChefPinDialog) {
-                  navigator.clipboard.writeText(showChefPinDialog);
-                  toast.success("تم النسخ");
-                }
-              }}
-            >
-              <Copy className="w-4 h-4 ms-2" />
-              نسخ
-            </Button>
-            <Button onClick={() => setShowChefPinDialog(null)}>تم</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmDisableChef} onOpenChange={setConfirmDisableChef}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>تعطيل نظام المطبخ؟</DialogTitle>
-            <DialogDescription>
-              سيتم حذف الـ PIN وكل جلسات المطبخ النشطة.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDisableChef(false)}>
-              إلغاء
-            </Button>
-            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={onDisableChef}>
-              تعطيل
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ─── Individual Chef Accounts ─────────────────────────────── */}
       <div className="rounded-2xl bg-background border p-6 space-y-4">
         <div className="flex items-center gap-2">
@@ -1923,8 +1736,8 @@ function Page() {
 
         {r && (
           <p className="text-xs text-muted-foreground">
-            رابط دخول المطبخ الفردي:{" "}
-            <span className="font-mono">{`${window.location.origin}/kitchen-login?rid=${r.id}&mode=individual`}</span>
+            رابط دخول المطبخ:{" "}
+            <span className="font-mono">{`${window.location.origin}/kitchen-login?rid=${r.id}`}</span>
           </p>
         )}
       </div>
@@ -2823,7 +2636,7 @@ function Page() {
                       تغيير الباسورد
                     </Button>
                     <button
-                      onClick={() => onRemoveStaff(s.user_id)}
+                      onClick={() => setStaffToRemove(s.user_id)}
                       className="text-muted-foreground hover:text-red-600 p-1"
                       aria-label="remove"
                     >
@@ -2863,6 +2676,18 @@ function Page() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={staffToRemove !== null}
+        onOpenChange={(o) => { if (!o) setStaffToRemove(null); }}
+        title="هل تريد حذف هذا الحساب نهائياً؟"
+        confirmLabel="حذف"
+        destructive
+        onConfirm={() => {
+          if (staffToRemove) void onRemoveStaff(staffToRemove);
+          setStaffToRemove(null);
+        }}
+      />
 
       <div className="rounded-2xl bg-background border-2 border-red-200 p-6 space-y-3">
         <h3 className="text-lg font-bold text-red-700">المنطقة الحساسة</h3>

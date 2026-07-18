@@ -190,7 +190,7 @@ export const cashierLookupTable = createServerFn({ method: "POST" })
       .select("id, total, created_at, status, daily_number")
       .eq("restaurant_id", restaurantId)
       .eq("table_id", tbl.id)
-      .in("status", ["new", "preparing", "ready"])
+      .in("status", ["new", "preparing", "ready", "served"])
       .order("created_at", { ascending: false });
     if (!orders || !orders.length) return { orders: [] };
     const ids = orders.map((o) => o.id);
@@ -240,15 +240,27 @@ export const cashierMarkPaid = createServerFn({ method: "POST" })
     }
     const now = new Date();
     const reviewDue = new Date(now.getTime() + 35 * 60_000).toISOString();
-    const { error: upErr } = await supabaseAdmin
-      .from("orders")
-      .update({
-        status: "paid",
-        served_at: now.toISOString(),
-        review_due_at: reviewDue,
-      })
-      .in("id", data.orderIds);
-    if (upErr) throw _genericDbError(upErr);
+    // Orders already marked served by the waiter keep their original served_at
+    const servedIds = rows.filter((o) => o.status === "served").map((o) => o.id);
+    const unservedIds = rows.filter((o) => o.status !== "served").map((o) => o.id);
+    if (servedIds.length) {
+      const { error: upErr } = await supabaseAdmin
+        .from("orders")
+        .update({ status: "paid", review_due_at: reviewDue })
+        .in("id", servedIds);
+      if (upErr) throw _genericDbError(upErr);
+    }
+    if (unservedIds.length) {
+      const { error: upErr } = await supabaseAdmin
+        .from("orders")
+        .update({
+          status: "paid",
+          served_at: now.toISOString(),
+          review_due_at: reviewDue,
+        })
+        .in("id", unservedIds);
+      if (upErr) throw _genericDbError(upErr);
+    }
     return { ok: true };
   });
 
@@ -272,7 +284,7 @@ export const cashierListReady = createServerFn({ method: "POST" })
       .from("orders")
       .select("id, total, created_at, status, table_id, daily_number, order_type, customer_name, customer_phone")
       .eq("restaurant_id", restaurantId)
-      .eq("status", "ready")
+      .in("status", ["ready", "served"])
       .in("order_type", ["dine_in", "takeaway"])
       .order("created_at", { ascending: true });
     if (!orders || !orders.length) return { orders: [] as Array<{ id: string; total: number; created_at: string; table_number: number | null; daily_number: number | null; order_type: string; customer_name: string | null; customer_phone: string | null; items: Array<{ name: string; qty: number; price: number }> }> };
@@ -335,4 +347,65 @@ export const getPublicCashierLoginInfo = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!r) return { found: false as const, name: "", enabled: false };
     return { found: true as const, name: r.name as string, enabled: !!r.cashier_enabled };
+  });
+export type ZReport = {
+  dayKey: string;
+  totalRevenue: number;
+  totalOrders: number;
+  avgTicket: number;
+  unpaidCount: number;
+  unpaidTotal: number;
+  byType: Record<"dine_in" | "delivery" | "takeaway", { count: number; revenue: number }>;
+  firstOrderAt: string | null;
+  lastOrderAt: string | null;
+};
+
+/** Cashier: end-of-day (Z) report for the current business day. */
+export const cashierZReport = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ token: z.string().min(10) }).parse(d))
+  .handler(async ({ data }): Promise<ZReport> => {
+    const restaurantId = await validateSession(data.token);
+    const { businessDayBounds } = await import("@/server/daily-summary.server");
+    const { startUtc, endUtc, dayKey } = businessDayBounds();
+
+    const { data: orders } = await supabaseAdmin
+      .from("orders")
+      .select("total, status, order_type, created_at")
+      .eq("restaurant_id", restaurantId)
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtc)
+      .order("created_at", { ascending: true });
+
+    const list = orders ?? [];
+    // Same convention as the daily Telegram summary: paid + served = closed revenue
+    const closed = list.filter((o) => o.status === "paid" || o.status === "served");
+    const open = list.filter((o) => o.status === "new" || o.status === "preparing" || o.status === "ready");
+
+    const byType: ZReport["byType"] = {
+      dine_in: { count: 0, revenue: 0 },
+      delivery: { count: 0, revenue: 0 },
+      takeaway: { count: 0, revenue: 0 },
+    };
+    let totalRevenue = 0;
+    for (const o of closed) {
+      const t = (o.order_type as keyof ZReport["byType"]) ?? "dine_in";
+      const amount = Number(o.total ?? 0);
+      totalRevenue += amount;
+      if (t in byType) {
+        byType[t].count++;
+        byType[t].revenue += amount;
+      }
+    }
+
+    return {
+      dayKey,
+      totalRevenue,
+      totalOrders: closed.length,
+      avgTicket: closed.length ? Math.round(totalRevenue / closed.length) : 0,
+      unpaidCount: open.length,
+      unpaidTotal: open.reduce((s, o) => s + Number(o.total ?? 0), 0),
+      byType,
+      firstOrderAt: closed[0]?.created_at ?? null,
+      lastOrderAt: closed.length ? closed[closed.length - 1].created_at : null,
+    };
   });

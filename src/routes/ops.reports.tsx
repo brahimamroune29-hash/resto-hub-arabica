@@ -9,6 +9,7 @@ import {
   Truck,
   Download,
   Printer,
+  Percent,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -53,6 +54,15 @@ const labelOf: Record<Range, string> = {
   year: tx("هذه السنة"),
 };
 
+type ItemProfit = {
+  name: string;
+  qty: number;
+  revenue: number;
+  cost: number | null; // null = no recipe, cost unknown
+  profit: number | null;
+  marginPct: number | null;
+};
+
 type Data = {
   revenue: number;
   purchases: number;
@@ -63,6 +73,7 @@ type Data = {
   topItems: { name: string; qty: number; revenue: number }[];
   topWaste: { name: string; cost: number; qty: number }[];
   topSupplier: { name: string; total: number } | null;
+  profitability: ItemProfit[];
 };
 
 function OpsReports() {
@@ -80,13 +91,14 @@ function OpsReports() {
     topItems: [],
     topWaste: [],
     topSupplier: null,
+    profitability: [],
   });
 
   const load = async (rid: string, r: Range) => {
     setLoading(true);
     const start = rangeStart(r).toISOString();
 
-    const [ordersRes, poRes, salRes, salNetRes, expRes, wasteRes, supRes, ingRes] = await Promise.all([
+    const [ordersRes, poRes, salNetRes, expRes, wasteRes, supRes, ingRes, recipesRes] = await Promise.all([
       supabase
         .from("orders")
         .select("id,total,status,created_at,order_items(menu_item_id,name_snapshot,quantity,price_snapshot)")
@@ -98,11 +110,6 @@ function OpsReports() {
         .select("supplier_id,total")
         .eq("restaurant_id", rid)
         .gte("created_at", start),
-      supabase
-        .from("salary_payments")
-        .select("amount")
-        .eq("restaurant_id", rid)
-        .gte("paid_at", start),
       supabase
         .from("employee_salary_payments")
         .select("net_salary")
@@ -119,15 +126,17 @@ function OpsReports() {
         .eq("restaurant_id", rid)
         .gte("created_at", start),
       supabase.from("suppliers").select("id,name").eq("restaurant_id", rid),
-      supabase.from("ingredients").select("id,name").eq("restaurant_id", rid),
+      supabase.from("ingredients").select("id,name,cost_per_unit").eq("restaurant_id", rid),
+      supabase
+        .from("menu_item_recipes")
+        .select("menu_item_id,ingredient_id,quantity")
+        .eq("restaurant_id", rid),
     ]);
 
     const orders = (ordersRes.data ?? []) as any[];
     const revenue = orders.reduce((s, o) => s + Number(o.total || 0), 0);
     const purchases = (poRes.data ?? []).reduce((s, x) => s + Number(x.total || 0), 0);
-    const salariesLegacy = (salRes.data ?? []).reduce((s, x) => s + Number(x.amount || 0), 0);
-    const salariesNet = (salNetRes.data ?? []).reduce((s, x) => s + Number(x.net_salary || 0), 0);
-    const salaries = salariesLegacy + salariesNet;
+    const salaries = (salNetRes.data ?? []).reduce((s, x) => s + Number(x.net_salary || 0), 0);
     const operatingExpenses = (expRes.data ?? []).reduce((s, x) => s + Number(x.amount || 0), 0);
     const waste = (wasteRes.data ?? []).reduce((s, x) => s + Number(x.cost || 0), 0);
 
@@ -143,6 +152,42 @@ function OpsReports() {
       }
     }
     const topItems = [...itemAgg.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
+
+    // Dish profitability: recipe cost (Σ ingredient qty × cost_per_unit) vs. sold price
+    const costPerUnit = new Map<string, number>();
+    for (const i of ingRes.data ?? []) costPerUnit.set(i.id, Number(i.cost_per_unit) || 0);
+    const dishCost = new Map<string, number>();
+    for (const rec of recipesRes.data ?? []) {
+      const c = (costPerUnit.get(rec.ingredient_id) ?? 0) * Number(rec.quantity || 0);
+      dishCost.set(rec.menu_item_id, (dishCost.get(rec.menu_item_id) ?? 0) + c);
+    }
+    const profitAgg = new Map<string, { name: string; qty: number; revenue: number; itemId: string | null }>();
+    for (const o of orders) {
+      for (const it of o.order_items ?? []) {
+        const key = it.menu_item_id ?? `snap:${it.name_snapshot}`;
+        const cur = profitAgg.get(key) ?? {
+          name: it.name_snapshot || "—",
+          qty: 0,
+          revenue: 0,
+          itemId: it.menu_item_id ?? null,
+        };
+        cur.qty += Number(it.quantity || 0);
+        cur.revenue += Number(it.quantity || 0) * Number(it.price_snapshot || 0);
+        profitAgg.set(key, cur);
+      }
+    }
+    const profitability: ItemProfit[] = [...profitAgg.values()]
+      .map((p) => {
+        const unitCost = p.itemId != null ? dishCost.get(p.itemId) : undefined;
+        if (unitCost === undefined) {
+          return { name: p.name, qty: p.qty, revenue: p.revenue, cost: null, profit: null, marginPct: null };
+        }
+        const cost = unitCost * p.qty;
+        const profit = p.revenue - cost;
+        const marginPct = p.revenue > 0 ? (profit / p.revenue) * 100 : 0;
+        return { name: p.name, qty: p.qty, revenue: p.revenue, cost, profit, marginPct };
+      })
+      .sort((a, b) => (b.profit ?? -Infinity) - (a.profit ?? -Infinity));
 
     // top waste
     const ingMap = new Map<string, string>();
@@ -181,6 +226,7 @@ function OpsReports() {
       topItems,
       topWaste,
       topSupplier,
+      profitability,
     });
     setLoading(false);
   };
@@ -219,6 +265,13 @@ function OpsReports() {
     lines.push("");
     lines.push(tx("أكثر مكوّن مهدور,التكلفة,الكمية"));
     for (const t of data.topWaste) lines.push(`${t.name},${t.cost},${t.qty}`);
+    lines.push("");
+    lines.push(tx("ربحية الأصناف,الكمية,الإيراد,التكلفة,الربح,الهامش٪"));
+    for (const p of data.profitability) {
+      lines.push(
+        `${p.name},${p.qty},${p.revenue},${p.cost ?? ""},${p.profit ?? ""},${p.marginPct != null ? p.marginPct.toFixed(1) : ""}`,
+      );
+    }
 
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -413,6 +466,66 @@ function OpsReports() {
           )}
         </Card>
       </div>
+
+      {/* Dish profitability: recipe cost vs. sales */}
+      <Card className="p-5 rounded-2xl glass shadow-glass border-border/60">
+        <h4 className="font-semibold text-sm mb-1 flex items-center gap-2">
+          <Percent className="w-4 h-4 text-primary" /> {tx("ربحية الأصناف")}
+        </h4>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          {tx("التكلفة محسوبة من وصفة الصنف وأسعار المكونات — الأصناف بدون وصفة تظهر بدون تكلفة")}
+        </p>
+        {data.profitability.length === 0 ? (
+          <div className="text-xs text-muted-foreground py-6 text-center">{tx("لا توجد بيانات")}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-muted-foreground text-xs">
+                <tr className="border-b border-border/60">
+                  <th className="text-right p-2">{tx("الصنف")}</th>
+                  <th className="text-right p-2">{tx("الكمية")}</th>
+                  <th className="text-right p-2">{tx("الإيراد")}</th>
+                  <th className="text-right p-2">{tx("التكلفة")}</th>
+                  <th className="text-right p-2">{tx("الربح")}</th>
+                  <th className="text-right p-2">{tx("الهامش")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.profitability.map((p, i) => (
+                  <tr key={i} className="border-b border-border/30 last:border-0">
+                    <td className="p-2 font-medium">{p.name}</td>
+                    <td className="p-2">{p.qty}</td>
+                    <td className="p-2">{fmt(p.revenue)} دج</td>
+                    <td className="p-2 text-muted-foreground">
+                      {p.cost != null ? (fmt(p.cost)) + " دج" : tx("بدون وصفة")}
+                    </td>
+                    <td className={`p-2 font-semibold ${p.profit == null ? "text-muted-foreground" : p.profit >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                      {p.profit != null ? (fmt(p.profit)) + " دج" : "—"}
+                    </td>
+                    <td className="p-2">
+                      {p.marginPct != null ? (
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                            p.marginPct >= 50
+                              ? "bg-emerald-500/10 text-emerald-600"
+                              : p.marginPct >= 25
+                                ? "bg-amber-500/10 text-amber-600"
+                                : "bg-red-500/10 text-red-600"
+                          }`}
+                        >
+                          {p.marginPct.toFixed(0)}%
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card className="p-5 rounded-2xl glass shadow-glass border-border/60">

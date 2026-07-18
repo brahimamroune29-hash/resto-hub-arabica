@@ -36,7 +36,6 @@ import { Route as OpsInventoryCountRouteImport } from './routes/ops.inventory-co
 import { Route as OpsInventoryRouteImport } from './routes/ops.inventory'
 import { Route as OpsExpensesRouteImport } from './routes/ops.expenses'
 import { Route as OpsEmployeesRouteImport } from './routes/ops.employees'
-import { Route as OpsCustomersRouteImport } from './routes/ops.customers'
 import { Route as OpsComplaintsRouteImport } from './routes/ops.complaints'
 import { Route as DashboardTablesRouteImport } from './routes/dashboard.tables'
 import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
@@ -45,6 +44,7 @@ import { Route as DashboardOrdersRouteImport } from './routes/dashboard.orders'
 import { Route as DashboardMenuRouteImport } from './routes/dashboard.menu'
 import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analytics'
 import { Route as DDelivery_tokenRouteImport } from './routes/d.$delivery_token'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
@@ -189,11 +189,6 @@ const OpsEmployeesRoute = OpsEmployeesRouteImport.update({
   path: '/employees',
   getParentRoute: () => OpsRoute,
 } as any)
-const OpsCustomersRoute = OpsCustomersRouteImport.update({
-  id: '/customers',
-  path: '/customers',
-  getParentRoute: () => OpsRoute,
-} as any)
 const OpsComplaintsRoute = OpsComplaintsRouteImport.update({
   id: '/complaints',
   path: '/complaints',
@@ -232,6 +227,11 @@ const DashboardAnalyticsRoute = DashboardAnalyticsRouteImport.update({
 const DDelivery_tokenRoute = DDelivery_tokenRouteImport.update({
   id: '/d/$delivery_token',
   path: '/d/$delivery_token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LovableEmailQueueProcessRoute =
@@ -296,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/waiter-login': typeof WaiterLoginRoute
   '/waiter-screen': typeof WaiterScreenRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -304,7 +305,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/ops/complaints': typeof OpsComplaintsRoute
-  '/ops/customers': typeof OpsCustomersRoute
   '/ops/employees': typeof OpsEmployeesRoute
   '/ops/expenses': typeof OpsExpensesRoute
   '/ops/inventory': typeof OpsInventoryRoute
@@ -340,6 +340,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/waiter-login': typeof WaiterLoginRoute
   '/waiter-screen': typeof WaiterScreenRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -348,7 +349,6 @@ export interface FileRoutesByTo {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/ops/complaints': typeof OpsComplaintsRoute
-  '/ops/customers': typeof OpsCustomersRoute
   '/ops/employees': typeof OpsEmployeesRoute
   '/ops/expenses': typeof OpsExpensesRoute
   '/ops/inventory': typeof OpsInventoryRoute
@@ -387,6 +387,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/waiter-login': typeof WaiterLoginRoute
   '/waiter-screen': typeof WaiterScreenRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/d/$delivery_token': typeof DDelivery_tokenRoute
   '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/menu': typeof DashboardMenuRoute
@@ -395,7 +396,6 @@ export interface FileRoutesById {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/tables': typeof DashboardTablesRoute
   '/ops/complaints': typeof OpsComplaintsRoute
-  '/ops/customers': typeof OpsCustomersRoute
   '/ops/employees': typeof OpsEmployeesRoute
   '/ops/expenses': typeof OpsExpensesRoute
   '/ops/inventory': typeof OpsInventoryRoute
@@ -435,6 +435,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/waiter-login'
     | '/waiter-screen'
+    | '/auth/callback'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -443,7 +444,6 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/ops/complaints'
-    | '/ops/customers'
     | '/ops/employees'
     | '/ops/expenses'
     | '/ops/inventory'
@@ -479,6 +479,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/waiter-login'
     | '/waiter-screen'
+    | '/auth/callback'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -487,7 +488,6 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/ops/complaints'
-    | '/ops/customers'
     | '/ops/employees'
     | '/ops/expenses'
     | '/ops/inventory'
@@ -525,6 +525,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/waiter-login'
     | '/waiter-screen'
+    | '/auth/callback'
     | '/d/$delivery_token'
     | '/dashboard/analytics'
     | '/dashboard/menu'
@@ -533,7 +534,6 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/tables'
     | '/ops/complaints'
-    | '/ops/customers'
     | '/ops/employees'
     | '/ops/expenses'
     | '/ops/inventory'
@@ -572,6 +572,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   WaiterLoginRoute: typeof WaiterLoginRoute
   WaiterScreenRoute: typeof WaiterScreenRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   DDelivery_tokenRoute: typeof DDelivery_tokenRoute
   RQr_tokenRoute: typeof RQr_tokenRoute
   TTakeaway_tokenRoute: typeof TTakeaway_tokenRoute
@@ -775,13 +776,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OpsEmployeesRouteImport
       parentRoute: typeof OpsRoute
     }
-    '/ops/customers': {
-      id: '/ops/customers'
-      path: '/customers'
-      fullPath: '/ops/customers'
-      preLoaderRoute: typeof OpsCustomersRouteImport
-      parentRoute: typeof OpsRoute
-    }
     '/ops/complaints': {
       id: '/ops/complaints'
       path: '/complaints'
@@ -836,6 +830,13 @@ declare module '@tanstack/react-router' {
       path: '/d/$delivery_token'
       fullPath: '/d/$delivery_token'
       preLoaderRoute: typeof DDelivery_tokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lovable/email/queue/process': {
@@ -923,7 +924,6 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 interface OpsRouteChildren {
   OpsComplaintsRoute: typeof OpsComplaintsRoute
-  OpsCustomersRoute: typeof OpsCustomersRoute
   OpsEmployeesRoute: typeof OpsEmployeesRoute
   OpsExpensesRoute: typeof OpsExpensesRoute
   OpsInventoryRoute: typeof OpsInventoryRoute
@@ -938,7 +938,6 @@ interface OpsRouteChildren {
 
 const OpsRouteChildren: OpsRouteChildren = {
   OpsComplaintsRoute: OpsComplaintsRoute,
-  OpsCustomersRoute: OpsCustomersRoute,
   OpsEmployeesRoute: OpsEmployeesRoute,
   OpsExpensesRoute: OpsExpensesRoute,
   OpsInventoryRoute: OpsInventoryRoute,
@@ -982,6 +981,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   WaiterLoginRoute: WaiterLoginRoute,
   WaiterScreenRoute: WaiterScreenRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   DDelivery_tokenRoute: DDelivery_tokenRoute,
   RQr_tokenRoute: RQr_tokenRoute,
   TTakeaway_tokenRoute: TTakeaway_tokenRoute,

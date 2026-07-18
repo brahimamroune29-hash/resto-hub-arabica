@@ -5,7 +5,7 @@ function fmtMoney(n: number) {
   return new Intl.NumberFormat("ar-DZ", { maximumFractionDigits: 0 }).format(n);
 }
 
-function businessDayBounds(): { startUtc: string; endUtc: string; dayKey: string } {
+export function businessDayBounds(): { startUtc: string; endUtc: string; dayKey: string } {
   // Business day = (now in Africa/Algiers - 6h)::date.
   // Window: [dayKey 06:00 Algiers, dayKey+1 06:00 Algiers).
   // Africa/Algiers is UTC+1 (no DST). 06:00 Algiers = 05:00 UTC.

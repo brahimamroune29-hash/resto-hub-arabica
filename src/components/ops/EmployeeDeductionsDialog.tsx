@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Select,
   SelectContent,
@@ -69,6 +70,7 @@ export function EmployeeDeductionsDialog({
   const [deductions, setDeductions] = useState<Deduction[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deductionToDelete, setDeductionToDelete] = useState<string | null>(null);
 
   // Add deduction form
   const [type, setType] = useState<Deduction["type"]>("advance");
@@ -158,7 +160,6 @@ export function EmployeeDeductionsDialog({
   };
 
   const removeDeduction = async (id: string) => {
-    if (!confirm("حذف هذا الاقتطاع؟")) return;
     const { error } = await supabase.from("employee_deductions").delete().eq("id", id);
     if (error) {
       toast.error("فشل الحذف");
@@ -316,7 +317,7 @@ export function EmployeeDeductionsDialog({
                       </td>
                       <td className="p-2 font-semibold text-destructive">{formatDZD(sub)}</td>
                       <td className="p-2">
-                        <Button size="icon" variant="ghost" onClick={() => removeDeduction(d.id)}>
+                        <Button size="icon" variant="ghost" onClick={() => setDeductionToDelete(d.id)}>
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
                       </td>
@@ -331,6 +332,18 @@ export function EmployeeDeductionsDialog({
         <DialogFooter className="mt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)}>إغلاق</Button>
         </DialogFooter>
+
+        <ConfirmDialog
+          open={deductionToDelete !== null}
+          onOpenChange={(o) => { if (!o) setDeductionToDelete(null); }}
+          title="حذف هذا الاقتطاع؟"
+          confirmLabel="حذف"
+          destructive
+          onConfirm={() => {
+            if (deductionToDelete) void removeDeduction(deductionToDelete);
+            setDeductionToDelete(null);
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

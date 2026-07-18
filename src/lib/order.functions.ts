@@ -103,17 +103,20 @@ export const submitOrder = createServerFn({ method: "POST" })
       order_number: order.daily_number != null
         ? String(order.daily_number).padStart(3, "0")
         : order.id.replace(/-/g, "").slice(-6).toUpperCase(),
+      daily_number: order.daily_number ?? null,
+      total,
     };
   });
 
 export type OrderStatusInfo = {
   id: string;
-  status: "new" | "preparing" | "ready" | "paid";
+  status: "new" | "preparing" | "ready" | "served" | "paid";
   review_due_at: string | null;
   google_maps_review_url: string | null;
   restaurant_id: string;
   has_review: boolean;
   daily_number: number | null;
+  total: number;
 };
 
 export const getOrderStatus = createServerFn({ method: "GET" })
@@ -132,7 +135,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
 
     const { data: order } = await supabaseAdmin
       .from("orders")
-      .select("id, status, review_due_at, restaurant_id, daily_number")
+      .select("id, status, review_due_at, restaurant_id, daily_number, total")
       .eq("id", data.order_id)
       .eq("restaurant_id", table.restaurant_id)
       .maybeSingle();
@@ -159,6 +162,7 @@ export const getOrderStatus = createServerFn({ method: "GET" })
       restaurant_id: order.restaurant_id,
       has_review: !!rev,
       daily_number: (order as { daily_number: number | null }).daily_number ?? null,
+      total: Number(order.total ?? 0),
     };
   });
 
