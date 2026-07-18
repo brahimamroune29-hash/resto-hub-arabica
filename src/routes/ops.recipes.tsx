@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, X, ChefHat, Search } from "lucide-react";
+import { Plus, X, ChefHat, Search, Trash2, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantId } from "@/lib/restaurant";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { tx } from "@/lib/ops-tx";
 import { useTranslation } from "react-i18next";
 
@@ -30,7 +32,7 @@ export const Route = createFileRoute("/ops/recipes")({
   component: OpsRecipes,
 });
 
-type MenuItem = { id: string; name: string; price: number };
+type MenuItem = { id: string; name: string; price: number; category_id: string | null };
 type Ingredient = { id: string; name: string; unit: string; cost_per_unit: number };
 type Recipe = {
   id: string;
@@ -56,6 +58,9 @@ function OpsRecipes() {
   const [activeItem, setActiveItem] = useState<MenuItem | null>(null);
   const [draft, setDraft] = useState<{ ingredient_id: string; quantity: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const ingMap = useMemo(() => {
     const m = new Map<string, Ingredient>();
@@ -87,7 +92,7 @@ function OpsRecipes() {
     const [m, i, r] = await Promise.all([
       supabase
         .from("menu_items")
-        .select("id,name,price")
+        .select("id,name,price,category_id")
         .eq("restaurant_id", rid)
         .order("name"),
       supabase
@@ -167,6 +172,40 @@ function OpsRecipes() {
   };
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(q.toLowerCase()));
+  const orphanCount = items.filter((i) => i.category_id === null).length;
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectOrphans = () => {
+    setSelected(new Set(items.filter((i) => i.category_id === null).map((i) => i.id)));
+  };
+
+  const deleteSelected = async () => {
+    if (!restaurantId || selected.size === 0) return;
+    setDeleting(true);
+    // FK: recipes cascade on item delete; old orders keep name/price snapshots
+    const { error } = await supabase
+      .from("menu_items")
+      .delete()
+      .in("id", [...selected])
+      .eq("restaurant_id", restaurantId);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      toast.error(tx("فشل الحذف"));
+      return;
+    }
+    toast.success(`تم حذف ${selected.size} صنف نهائياً`);
+    setSelected(new Set());
+    await loadAll(restaurantId);
+  };
 
   return (
     <div className="p-2 space-y-4" dir="rtl">
@@ -191,6 +230,38 @@ function OpsRecipes() {
             />
           </div>
         </div>
+        {(orphanCount > 0 || selected.size > 0) && (
+          <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-border/60">
+            {orphanCount > 0 && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={selectOrphans}>
+                <ListChecks className="w-4 h-4" />
+                تحديد غير المصنفة ({orphanCount})
+              </Button>
+            )}
+            {selected.size > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="gap-1.5"
+                  disabled={deleting}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  حذف المحدد ({selected.size})
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  إلغاء التحديد
+                </Button>
+              </>
+            )}
+            {orphanCount > 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                "غير مصنفة" = أصناف بقيت بعد حذف تصنيفها ولا تظهر في المنيو
+              </span>
+            )}
+          </div>
+        )}
       </Card>
 
       {loading ? (
@@ -213,20 +284,36 @@ function OpsRecipes() {
                 onClick={() => openItem(it)}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm truncate">{it.name}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      السعر: {fmt(Number(it.price))} دج
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span onClick={(e) => e.stopPropagation()} className="pt-0.5">
+                      <Checkbox
+                        checked={selected.has(it.id)}
+                        onCheckedChange={() => toggleSelect(it.id)}
+                        aria-label={`تحديد ${it.name}`}
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{it.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        السعر: {fmt(Number(it.price))} دج
+                      </div>
                     </div>
                   </div>
-                  <div
-                    className={`text-[10px] px-2 py-1 rounded-lg font-medium ${
-                      rs.length === 0
-                        ? "bg-muted text-muted-foreground"
-                        : "bg-primary/10 text-primary"
-                    }`}
-                  >
-                    {rs.length === 0 ? tx("بدون وصفة") : (rs.length) + tx(" مكوّن")}
+                  <div className="flex flex-col items-end gap-1">
+                    <div
+                      className={`text-[10px] px-2 py-1 rounded-lg font-medium ${
+                        rs.length === 0
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-primary/10 text-primary"
+                      }`}
+                    >
+                      {rs.length === 0 ? tx("بدون وصفة") : (rs.length) + tx(" مكوّن")}
+                    </div>
+                    {it.category_id === null && (
+                      <div className="text-[10px] px-2 py-1 rounded-lg font-medium bg-amber-500/15 text-amber-600">
+                        غير مصنف
+                      </div>
+                    )}
                   </div>
                 </div>
                 {rs.length > 0 && (
@@ -252,6 +339,16 @@ function OpsRecipes() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`حذف ${selected.size} صنف نهائياً؟`}
+        description="الحذف نهائي ولا يمكن التراجع عنه. الطلبات القديمة وتقارير المبيعات لن تتأثر — تحتفظ باسم الصنف وسعره."
+        confirmLabel={deleting ? "جاري الحذف…" : "نعم، احذف"}
+        destructive
+        onConfirm={() => void deleteSelected()}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
